@@ -1,10 +1,23 @@
 {
-  "usuario": "nomeUsuario",
-  "senha": "hashDaSenha",
-  "pergunta": "perguntaSecreta",
-  "resposta": "respostaSecreta",
-  "aliases": {
-    "alias1": "url1",
-    "alias2": "url2"
+  "name": "tron-smartportao",
+  "version": "1.0.0",
+  "description": "Sistema TRON Smart Portão",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": ["tron", "smartportao", "alexa", "voice-monkey"],
+  "author": "Cezar Jam",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "mongoose": "^7.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
   }
 }
