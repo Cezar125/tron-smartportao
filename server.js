@@ -2,7 +2,8 @@ import express from 'express';
 import session from 'express-session';
 import bcrypt from 'bcryptjs';
 import https from 'https';
-import { conectarMongo } from './config/mongo.js';
+import { connectDB } from './config/mongo.js';
+
 
 const app = express();
 const port = 4000;
