@@ -1,19 +1,11 @@
 import express from 'express';
 import session from 'express-session';
 import bcrypt from 'bcryptjs';
+import { connectDB } from './config/mongo.js';
 import https from 'https';
-import { connectDB } from './config/mongo.js'; // Conexão MongoDB
 
 const app = express();
-const port = process.env.PORT || 4000;
-
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-app.use(session({
-  secret: 'segredo-cezar',
-  resave: false,
-  saveUninitialized: true
-}));
+const port = 4000;
 
 // Normalização de texto
 const normalizar = (texto = '') => String(texto)
@@ -22,227 +14,209 @@ const normalizar = (texto = '') => String(texto)
   .replace(/[\u0300-\u036f]/g, "")
   .replace(/\s+/g, "");
 
-// Wrapper para requisição HTTPS
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
+app.use(session({
+  secret: 'segredo-cezar',
+  resave: false,
+  saveUninitialized: true
+}));
+
+// Wrapper HTTPS
 function fireHttpsGet(url, callback) {
   try {
-    https.get(url, callback).on('error', err => console.error('Erro na requisição HTTPS:', err));
+    https.get(url, callback).on('error', err => console.error('Erro HTTPS:', err));
   } catch (err) {
-    console.error('Erro ao chamar fireHttpsGet:', err);
+    console.error('Erro fireHttpsGet:', err);
   }
 }
 
-let db;
-connectDB()
-  .then(database => {
-    db = database;
-    console.log('✅ Conectado ao MongoDB Atlas');
-  })
-  .catch(err => console.error('❌ Erro ao conectar ao MongoDB:', err));
-
-// ================= ROTAS =================
-
-// Login
+// Rotas públicas
 app.get('/', (req, res) => res.redirect('/login'));
 
+// Login
 app.get('/login', (req, res) => {
-  res.send(`
-    <html>
-    <head>
-      <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron&display=swap');
-        body { background-color:#0A0A0A; color:#00FFFF; font-family:'Orbitron', sans-serif; text-align:center; padding-top:50px; }
-        input, button { background-color:#1F1F1F; border:1px solid #8A2BE2; color:#39FF14; padding:10px; margin:5px; font-size:16px; box-shadow:0 0 10px #8A2BE2; }
-        button { background-color:#000; color:#FF1493; border:1px solid #FF1493; box-shadow:0 0 10px #FF1493; }
-        h1,h2,h3 { text-shadow:0 0 10px #00FFFF; }
-      </style>
-    </head>
-    <body>
-      <h1 style="font-size:48px;">TRON</h1>
-      <h2>Smart Portão</h2>
-      <h3>Login de Usuário</h3>
-      <form method="POST" action="/login" autocomplete="off">
-        <label>Nome de usuário:</label><br>
-        <input type="text" name="usuario" autocomplete="off" required><br><br>
-        <label>Senha:</label><br>
-        <input type="password" name="senha" autocomplete="new-password" required><br><br>
-        <button type="submit">Entrar</button>
-      </form>
-      <p><a href="/registrar">Criar nova conta</a></p>
-      <p><a href="/recuperar">Esqueci minha senha</a></p>
-    </body>
-    </html>
-  `);
+  res.sendFile('login.html', { root: './public' }); // Opcional: separar HTML em public
 });
 
 app.post('/login', async (req, res) => {
   const { usuario, senha } = req.body;
-  const userNormalized = normalizar(usuario);
+  const uNorm = normalizar(usuario);
+  const db = await connectDB();
 
-  if (!db) return res.status(500).send('❌ Banco não conectado');
-
-  const u = await db.collection('usuarios').findOne({ usuario: userNormalized });
+  const u = await db.collection('usuarios').findOne({ usuario: uNorm });
   if (!u || !(await bcrypt.compare(senha, u.senha))) {
-    return res.send('❌ Usuário ou senha inválidos. <a href="/login">Voltar</a>');
+    return res.send('Usuário ou senha inválidos. <a href="/login">Voltar</a>');
   }
 
-  req.session.usuario = userNormalized;
+  req.session.usuario = uNorm;
   res.redirect('/painel');
 });
 
 // Cadastro
 app.get('/registrar', (req, res) => {
-  res.send(`
-    <html>
-    <head>
-      <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron&display=swap');
-        body { background-color:#0A0A0A; color:#00FFFF; font-family:'Orbitron', sans-serif; text-align:center; padding-top:50px; }
-        input, button { background-color:#1F1F1F; border:1px solid #8A2BE2; color:#39FF14; padding:10px; margin:5px; font-size:16px; box-shadow:0 0 10px #8A2BE2; }
-        button { background-color:#000; color:#FF1493; border:1px solid #FF1493; box-shadow:0 0 10px #FF1493; }
-        h1,h2,h3 { text-shadow:0 0 10px #00FFFF; }
-      </style>
-    </head>
-    <body>
-      <h1 style="font-size:48px;">TRON</h1>
-      <h2>Smart Portão</h2>
-      <h3>Cadastro de Usuário</h3>
-      <form method="POST" action="/registrar">
-        <label>Nome de usuário:</label><br>
-        <input type="text" name="usuario" required><br><br>
-        <label>Senha:</label><br>
-        <input type="password" name="senha" required><br><br>
-        <label>Confirmar senha:</label><br>
-        <input type="password" name="confirmar" required><br><br>
-        <label>Pergunta secreta:</label><br>
-        <input type="text" name="pergunta" required><br><br>
-        <label>Resposta secreta:</label><br>
-        <input type="text" name="resposta" required><br><br>
-        <button type="submit">Cadastrar</button>
-      </form>
-      <p><a href="/login">Já tenho conta</a></p>
-    </body>
-    </html>
-  `);
+  res.sendFile('registrar.html', { root: './public' });
 });
 
 app.post('/registrar', async (req, res) => {
   let { usuario, senha, confirmar, pergunta, resposta } = req.body;
-  const userNormalized = normalizar(usuario);
+  usuario = normalizar(usuario);
 
-  if (senha !== confirmar) return res.send('❌ As senhas não coincidem. <a href="/registrar">Voltar</a>');
-  if (!db) return res.status(500).send('❌ Banco não conectado');
+  if (senha !== confirmar) return res.send('❌ Senhas não coincidem. <a href="/registrar">Voltar</a>');
 
-  const exists = await db.collection('usuarios').findOne({ usuario: userNormalized });
-  if (exists) return res.send('❌ Usuário já existe. <a href="/registrar">Voltar</a>');
+  const db = await connectDB();
+  const existe = await db.collection('usuarios').findOne({ usuario });
+  if (existe) return res.send('❌ Usuário já existe. <a href="/registrar">Voltar</a>');
 
   const hashSenha = await bcrypt.hash(senha, 10);
-
   await db.collection('usuarios').insertOne({
-    usuario: userNormalized,
+    usuario,
     senha: hashSenha,
     pergunta,
     resposta,
     aliases: {}
   });
 
-  res.redirect('/login');
+  res.redirect('/cadastro-sucesso');
+});
+
+app.get('/cadastro-sucesso', (req, res) => {
+  res.send('✅ Cadastro realizado! <a href="/login">Login</a>');
+});
+
+// Recuperar senha
+app.get('/recuperar', (req, res) => {
+  res.sendFile('recuperar.html', { root: './public' });
+});
+
+app.post('/recuperar', async (req, res) => {
+  let { usuario, resposta, nova } = req.body;
+  usuario = normalizar(usuario);
+  const db = await connectDB();
+  const u = await db.collection('usuarios').findOne({ usuario });
+  if (!u) return res.send('Usuário não encontrado. <a href="/recuperar">Tentar novamente</a>');
+
+  if (!u.resposta || u.resposta.toLowerCase().trim() !== String(resposta).toLowerCase().trim()) {
+    return res.send('Resposta secreta incorreta. <a href="/recuperar">Tentar novamente</a>');
+  }
+
+  const novaHash = await bcrypt.hash(nova, 10);
+  await db.collection('usuarios').updateOne({ usuario }, { $set: { senha: novaHash } });
+
+  res.send('✅ Senha redefinida com sucesso. <a href="/login">Ir para login</a>');
+});
+
+// Logout
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => res.redirect('/login'));
 });
 
 // Painel
 app.get('/painel', async (req, res) => {
   const u = req.session.usuario;
   if (!u) return res.redirect('/login');
-  if (!db) return res.status(500).send('❌ Banco não conectado');
+  const db = await connectDB();
+  const usuarioObj = await db.collection('usuarios').findOne({ usuario: u });
 
-  const user = await db.collection('usuarios').findOne({ usuario: u });
-  const aliases = user.aliases || {};
-
-  const lista = Object.entries(aliases).map(([alias, url]) => `
+  const lista = Object.entries(usuarioObj.aliases || {}).map(([alias, url]) => `
     <li>
-      <strong>${alias}</strong><br>
-      <div style="position:relative; overflow-x:auto; white-space:nowrap; padding:10px; background-color:#1F1F1F; border:1px solid #8A2BE2; box-shadow:0 0 10px #8A2BE2; margin-top:5px;">
-        <span style="word-break:break-all; color:#39FF14;">${url}</span>
-        <button onclick="navigator.clipboard.writeText('${url}');
-          const msg=document.createElement('span');
-          msg.textContent='✅ Copiado!';
-          msg.style='position:absolute; top:5px; left:5px; color:#00FFFF; font-size:12px; background-color:#000; padding:2px 6px; border:1px solid #00FFFF; box-shadow:0 0 5px #00FFFF;';
-          this.parentElement.appendChild(msg);
-          setTimeout(()=>msg.remove(),2000);"
-          style="position:absolute; top:5px; right:5px; background-color:#000; color:#FF1493; border:1px solid #FF1493; padding:5px; font-size:12px; cursor:pointer;">
-          📋
-        </button>
-      </div>
-      <form method="POST" action="/excluir-alias" style="margin-top:10px;">
+      <strong>${alias}</strong> - ${url}
+      <form method="POST" action="/excluir-alias">
         <input type="hidden" name="alias" value="${alias}">
-        <button type="submit">Excluir</button>
+        <button>Excluir</button>
       </form>
     </li>
   `).join('');
 
+  let adminPanel = '';
+  if (u === 'admin') {
+    const usuariosList = await db.collection('usuarios').find({}).toArray();
+    adminPanel = `
+      <h3>Usuários cadastrados:</h3>
+      <ul>
+        ${usuariosList.map(user => `<li>${user.usuario} 
+        <form method="POST" action="/excluir-usuario">
+          <input type="hidden" name="usuario" value="${user.usuario}">
+          <button>🗑️ Excluir</button>
+        </form>
+        </li>`).join('')}
+      </ul>
+    `;
+  }
+
   res.send(`
-    <html>
-    <head>
-      <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron&display=swap');
-        body { background-color:#0A0A0A; color:#00FFFF; font-family:'Orbitron', sans-serif; text-align:center; padding:30px; }
-        h1,h2,h3 { text-shadow:0 0 10px #00FFFF; }
-        ul { list-style:none; padding:0; }
-        li { background-color:#1F1F1F; border:1px solid #8A2BE2; color:#39FF14; padding:10px; margin:10px auto; width:80%; box-shadow:0 0 10px #8A2BE2; }
-        input, button { background-color:#000; color:#FF1493; border:1px solid #FF1493; padding:10px; margin:5px; font-size:16px; box-shadow:0 0 10px #FF1493; }
-        a { color:#00FFFF; text-decoration:none; }
-      </style>
-    </head>
-    <body>
-      <h1>TRON Smart Portão</h1>
-      <h2>Painel de Aliases</h2>
-      <ul>${lista}</ul>
-      <h3>Adicionar novo alias</h3>
-      <form method="POST" action="/adicionar-alias">
-        <input type="text" name="alias" placeholder="Nome do alias" required>
-        <input type="text" name="url" placeholder="URL do VoiceMonkey" required>
-        <button type="submit">Adicionar</button>
-      </form>
-      <p><a href="/logout">Sair</a></p>
-    </body>
-    </html>
+    <h1>Painel de ${u}</h1>
+    <a href="/logout">Sair</a>
+    ${adminPanel}
+    <h3>Aliases cadastrados:</h3>
+    <ul>${lista || '<li>Nenhum alias cadastrado.</li>'}</ul>
   `);
 });
 
-// Adicionar alias
-app.post('/adicionar-alias', async (req, res) => {
-  const { alias, url } = req.body;
+// Cadastrar alias
+app.post('/cadastrar-alias', async (req, res) => {
   const u = req.session.usuario;
   if (!u) return res.redirect('/login');
-  if (!db) return res.status(500).send('❌ Banco não conectado');
+
+  const { alias, url } = req.body;
+  const aNorm = normalizar(alias);
+  const db = await connectDB();
 
   await db.collection('usuarios').updateOne(
     { usuario: u },
-    { $set: { [`aliases.${alias}`]: url } }
+    { $set: { [`aliases.${aNorm}`]: url } }
   );
+
   res.redirect('/painel');
 });
 
 // Excluir alias
 app.post('/excluir-alias', async (req, res) => {
-  const { alias } = req.body;
   const u = req.session.usuario;
   if (!u) return res.redirect('/login');
-  if (!db) return res.status(500).send('❌ Banco não conectado');
+
+  const { alias } = req.body;
+  const aNorm = normalizar(alias);
+  const db = await connectDB();
 
   await db.collection('usuarios').updateOne(
     { usuario: u },
-    { $unset: { [`aliases.${alias}`]: "" } }
+    { $unset: { [`aliases.${aNorm}`]: "" } }
   );
+
   res.redirect('/painel');
 });
 
-// Logout
-app.get('/logout', (req, res) => {
-  req.session.destroy();
-  res.redirect('/login');
+// Admin - excluir usuário
+app.post('/excluir-usuario', async (req, res) => {
+  const u = req.session.usuario;
+  if (u !== 'admin') return res.redirect('/login');
+
+  const { usuario } = req.body;
+  const db = await connectDB();
+  await db.collection('usuarios').deleteOne({ usuario });
+
+  res.redirect('/painel');
 });
 
-// ================= START SERVER =================
-app.listen(port, () => {
-  console.log(`🚀 Servidor rodando em http://localhost:${port}`);
+// Disparo de alias
+app.get('/:alias', async (req, res) => {
+  const u = normalizar(req.query.usuario || '');
+  const alias = normalizar(req.params.alias);
+  if (!u) return res.status(401).send('Usuário inválido.');
+
+  const db = await connectDB();
+  const usuarioObj = await db.collection('usuarios').findOne({ usuario: u });
+  const url = usuarioObj?.aliases?.[alias];
+  if (!url) return res.status(404).send('Alias não encontrado.');
+
+  fireHttpsGet(url, response => {
+    let data = '';
+    response.on('data', chunk => { data += chunk; });
+    response.on('end', () => res.send(`✅ Disparo enviado para "${alias}". Resposta: ${data}`));
+  });
 });
+
+// Start
+app.listen(port, () => console.log(`🚀 Servidor rodando na porta ${port}`));
