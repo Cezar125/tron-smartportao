@@ -358,24 +358,54 @@ app.post('/excluir-usuario', async (req,res)=>{
 });
 
 
-// ==================== GARAGEMVIP ====================
-app.get('/garagemvip', async (req, res) => {
-  const uRaw = req.query.usuario || '';
-  const usuarioSessao = normalizar(uRaw);
-  const aliasKey = 'garagemvip';
+// Rota fixa para garagemvip (colocada antes do catch-all)
 
-  const u = await Usuario.findOne({ usuario: usuarioSessao });
-  if (!u || !u.aliases.has(aliasKey)) {
-    return res.status(404).send(`❌ Alias "${aliasKey}" não encontrado para o usuário "${uRaw}".`);
+app.get('/garagemvip', (req, res) => {
+  const uRaw = req.query.usuario || '';
+  const u = normalizar(uRaw);
+  const a = normalizar('garagemvip'); // <- AQUI: usamos normalizar para bater com as chaves salvas
+  const url = usuarios[u]?.aliases?.[a];
+
+  if (!url) {
+    const disponiveis = Object.keys(usuarios[u]?.aliases || {}).join(', ') || 'nenhum';
+    return res.status(404).send(`❌ Alias "${a}" (normalizado) não encontrado para o usuário "${uRaw}". Aliases disponíveis: ${disponiveis}.`);
   }
 
-  const url = u.aliases.get(aliasKey);
   fireHttpsGet(url, response => {
     let data = '';
-    response.on('data', chunk => data += chunk);
-    response.on('end', () => res.send(`✅ Disparo enviado para "${aliasKey}". Resposta: ${data}`));
+    response.on('data', chunk => { data += chunk; });
+    response.on('end', () => {
+      res.send(`✅ Disparo enviado para "${a}". Resposta: ${data}`);
+    });
   });
 });
+
+
+// Catch-all para alias amigável (deve ficar por último)
+app.get('/:alias', (req, res) => {
+  const alias = normalizar(req.params.alias);
+  const usuario = normalizar(req.query.usuario || '');
+
+  if (!usuario || !usuarios[usuario]) {
+    return res.status(401).send('❌ Usuário não informado ou inválido.');
+  }
+
+  const url = usuarios[usuario]?.aliases?.[alias];
+  if (!url) {
+    return res.status(404).send(`❌ Alias "${alias}" não encontrado para o usuário "${usuario}".`);
+  }
+
+  fireHttpsGet(url, response => {
+    let data = '';
+    response.on('data', chunk => { data += chunk; });
+    response.on('end', () => {
+      res.send(`✅ Disparo enviado para "${alias}". Resposta: ${data}`);
+    });
+  });
+});
+
+
+
 
 // ==================== INICIAR SERVIDOR ====================
 app.listen(port, () => console.log(`🚀 Servidor rodando na porta ${port}`));
