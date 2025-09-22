@@ -357,54 +357,69 @@ app.post('/excluir-usuario', async (req,res)=>{
   res.redirect('/excluir-usuario');
 });
 
+// Rota fixa para garagemvip
+app.get('/garagemvip', async (req, res) => {
+  try {
+    const uRaw = req.query.usuario || '';
+    const usuario = normalizar(uRaw);
+    const alias = 'garagemvip';
 
-// Rota fixa para garagemvip (colocada antes do catch-all)
+    const u = await Usuario.findOne({ nome: usuario }).lean();
+    if (!u) return res.status(404).send(`❌ Usuário "${uRaw}" não encontrado.`);
 
-app.get('/garagemvip', (req, res) => {
-  const uRaw = req.query.usuario || '';
-  const u = normalizar(uRaw);
-  const a = normalizar('garagemvip'); // <- AQUI: usamos normalizar para bater com as chaves salvas
-  const url = usuarios[u]?.aliases?.[a];
+    const url = u.aliases?.[alias];
+    if (!url) {
+      const disponiveis = Object.keys(u.aliases || {}).join(', ') || 'nenhum';
+      return res.status(404).send(`❌ Alias "${alias}" não encontrado para o usuário "${uRaw}". Aliases disponíveis: ${disponiveis}.`);
+    }
 
-  if (!url) {
-    const disponiveis = Object.keys(usuarios[u]?.aliases || {}).join(', ') || 'nenhum';
-    return res.status(404).send(`❌ Alias "${a}" (normalizado) não encontrado para o usuário "${uRaw}". Aliases disponíveis: ${disponiveis}.`);
-  }
-
-  fireHttpsGet(url, response => {
-    let data = '';
-    response.on('data', chunk => { data += chunk; });
-    response.on('end', () => {
-      res.send(`✅ Disparo enviado para "${a}". Resposta: ${data}`);
+    https.get(url, response => {
+      let data = '';
+      response.on('data', chunk => { data += chunk; });
+      response.on('end', () => {
+        res.send(`✅ Disparo enviado para "${alias}". Resposta: ${data}`);
+      });
+    }).on('error', err => {
+      console.error(err);
+      res.status(500).send('❌ Erro ao disparar a URL.');
     });
-  });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('❌ Internal Server Error');
+  }
 });
 
+// Catch-all para qualquer outro alias
+app.get('/:alias', async (req, res) => {
+  try {
+    const alias = normalizar(req.params.alias);
+    const usuario = normalizar(req.query.usuario || '');
 
-// Catch-all para alias amigável (deve ficar por último)
-app.get('/:alias', (req, res) => {
-  const alias = normalizar(req.params.alias);
-  const usuario = normalizar(req.query.usuario || '');
+    if (!usuario) return res.status(401).send('❌ Usuário não informado.');
 
-  if (!usuario || !usuarios[usuario]) {
-    return res.status(401).send('❌ Usuário não informado ou inválido.');
-  }
+    const u = await Usuario.findOne({ nome: usuario }).lean();
+    if (!u) return res.status(404).send(`❌ Usuário "${usuario}" não encontrado.`);
 
-  const url = usuarios[usuario]?.aliases?.[alias];
-  if (!url) {
-    return res.status(404).send(`❌ Alias "${alias}" não encontrado para o usuário "${usuario}".`);
-  }
+    const url = u.aliases?.[alias];
+    if (!url) return res.status(404).send(`❌ Alias "${alias}" não encontrado para o usuário "${usuario}".`);
 
-  fireHttpsGet(url, response => {
-    let data = '';
-    response.on('data', chunk => { data += chunk; });
-    response.on('end', () => {
-      res.send(`✅ Disparo enviado para "${alias}". Resposta: ${data}`);
+    https.get(url, response => {
+      let data = '';
+      response.on('data', chunk => { data += chunk; });
+      response.on('end', () => {
+        res.send(`✅ Disparo enviado para "${alias}". Resposta: ${data}`);
+      });
+    }).on('error', err => {
+      console.error(err);
+      res.status(500).send('❌ Erro ao disparar a URL.');
     });
-  });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('❌ Internal Server Error');
+  }
 });
-
-
 
 
 // ==================== INICIAR SERVIDOR ====================
