@@ -3,13 +3,15 @@ import session from 'express-session';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import https from 'https';
+import dotenv from 'dotenv';
+
+dotenv.config(); // 🔹 Carrega variáveis do .env
 
 const app = express();
 const port = process.env.PORT || 4000;
 
 // ================== CONFIGURAÇÃO MONGODB ==================
-const mongoUri = process.env.MONGODB_URI || 
-'mongodb+srv://cezarrocha297_db_user:Casa%2A2323@cluster0.vw3i1h3.mongodb.net/tronDB?retryWrites=true&w=majority';
+const mongoUri = process.env.MONGODB_URI;
 
 mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('✅ Conectado ao MongoDB Atlas'))
@@ -38,7 +40,7 @@ const normalizar = (texto = '') => {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(session({
-  secret: 'segredo-cezar',
+  secret: process.env.SESSION_SECRET || 'fallback-secret', // 🔹 Agora pega do .env
   resave: false,
   saveUninitialized: true
 }));
