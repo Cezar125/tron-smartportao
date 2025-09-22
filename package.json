@@ -1,23 +1,31 @@
 {
   "name": "tron-smartportao",
   "version": "1.0.0",
-  "description": "Sistema TRON Smart Portão",
-  "type": "module",
+  "description": "TRON Smart Portão - Painel de controle com aliases e Voice Monkey",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
-  "keywords": ["tron", "smartportao", "alexa", "voice-monkey"],
-  "author": "Cezar Jam",
-  "license": "MIT",
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "express": "^4.18.2",
     "express-session": "^1.17.3",
-    "mongoose": "^7.3.1"
+    "mongoose": "^7.6.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
-  }
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "tron",
+    "smartportao",
+    "voice-monkey",
+    "dashboard"
+  ],
+  "author": "Cezar Jam",
+  "license": "MIT"
 }
