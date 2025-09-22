@@ -357,21 +357,25 @@ app.post('/excluir-usuario', async (req,res)=>{
   res.redirect('/excluir-usuario');
 });
 
-// -------- ROTA FIXA GARAGEM/VOICE MONKEY --------
-app.get('/disparar/:alias', async (req,res)=>{
-  const usuario = req.session.usuario;
-  if(!usuario) return res.status(401).send('Não autorizado');
 
-  const { alias } = req.params;
-  const u = await Usuario.findOne({ nome: usuario });
-  const url = u.aliases.get(normalizar(alias));
-  if(!url) return res.status(404).send('Alias não encontrado');
+// ==================== GARAGEMVIP ====================
+app.get('/garagemvip', async (req, res) => {
+  const uRaw = req.query.usuario || '';
+  const usuarioSessao = normalizar(uRaw);
+  const aliasKey = 'garagemvip';
 
-  fireHttpsGet(url, r=>console.log(`Disparo de ${alias} com status ${r.statusCode}`));
-  res.send(`✅ Disparo enviado para alias "${alias}"`);
+  const u = await Usuario.findOne({ usuario: usuarioSessao });
+  if (!u || !u.aliases.has(aliasKey)) {
+    return res.status(404).send(`❌ Alias "${aliasKey}" não encontrado para o usuário "${uRaw}".`);
+  }
+
+  const url = u.aliases.get(aliasKey);
+  fireHttpsGet(url, response => {
+    let data = '';
+    response.on('data', chunk => data += chunk);
+    response.on('end', () => res.send(`✅ Disparo enviado para "${aliasKey}". Resposta: ${data}`));
+  });
 });
 
-// ================== START SERVER ==================
-app.listen(port, () => {
-  console.log(`🚀 Servidor rodando na porta ${port}`);
-});
+// ==================== INICIAR SERVIDOR ====================
+app.listen(port, () => console.log(`🚀 Servidor rodando na porta ${port}`));
