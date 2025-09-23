@@ -5,7 +5,7 @@ import mongoose from 'mongoose';
 import https from 'https';
 import dotenv from 'dotenv';
 
-dotenv.config(); // 🔹 Carrega variáveis do .env
+dotenv.config(); // Carrega variáveis do .env
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -40,7 +40,7 @@ const normalizar = (texto = '') => {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'fallback-secret', // 🔹 Agora pega do .env
+  secret: process.env.SESSION_SECRET, // <-- pega do .env
   resave: false,
   saveUninitialized: true
 }));
@@ -423,6 +423,6 @@ app.get('/:alias', async (req, res) => {
   }
 });
 
-
 // ==================== INICIAR SERVIDOR ====================
 app.listen(port, () => console.log(`🚀 Servidor rodando na porta ${port}`));
+
