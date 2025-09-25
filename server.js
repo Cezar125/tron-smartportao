@@ -84,6 +84,13 @@ h1,h2,h3 { text-shadow:0 0 10px #00FFFF;}
 </form>
 <p><a href="/registrar">Criar nova conta</a></p>
 <p><a href="/recuperar">Esqueci minha senha</a></p>
+<h3>⚠️ Excluir minha conta</h3>
+<form method="POST" action="/excluir-conta" onsubmit="return confirm('Tem certeza que deseja excluir sua conta e todos os dados? Esta ação não pode ser desfeita.');">
+  <button type="submit" style="background:#FF0000; color:#FFF; border:1px solid #FF0000; padding:10px; font-size:16px; cursor:pointer;">
+    🗑️ Excluir minha conta
+  </button>
+</form>
+
 </body>
 </html>
   `);
@@ -318,6 +325,30 @@ app.post('/excluir-alias', async (req,res)=>{
   const u = await Usuario.findOne({ nome: usuario });
   if(u.aliases.has(alias)) { u.aliases.delete(alias); await u.save(); }
   res.redirect('/painel');
+});
+// -------- USUÁRIO EXCLUIR PRÓPRIA CONTA --------
+app.post('/excluir-conta', async (req, res) => {
+  const usuario = req.session.usuario;
+  if (!usuario) return res.redirect('/login');
+
+  await Usuario.deleteOne({ nome: usuario }); // apaga do MongoDB
+  req.session.destroy(() => {
+    res.send(`
+      <html>
+      <head>
+      <style>
+      body { background:#0A0A0A; color:#FF0000; font-family:'Orbitron',sans-serif; text-align:center; padding-top:80px; }
+      a { color:#00FFFF; font-size:18px; text-decoration:none; border:1px solid #00FFFF; padding:10px 20px; box-shadow:0 0 10px #00FFFF; }
+      </style>
+      </head>
+      <body>
+      <h1>🗑️ Conta excluída com sucesso</h1>
+      <p>Todos os seus dados foram removidos permanentemente.</p>
+      <a href="/login">Voltar ao início</a>
+      </body>
+      </html>
+    `);
+  });
 });
 
 // -------- ADMIN EXCLUIR USUÁRIOS --------
