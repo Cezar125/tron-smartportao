@@ -233,6 +233,7 @@ app.post('/recuperar', async (req,res)=>{
 
 // -------- LOGOUT --------
 app.get('/logout', (req,res)=>{ req.session.destroy(()=>res.redirect('/login')) });
+//--------Excluir Conta------
 app.post('/excluir-conta', async (req, res) => {
   if (!req.session.usuario) {
     return res.redirect('/login');
@@ -317,6 +318,7 @@ ${adminPanel}
 </form>
 <hr>
 <!-- Botão para excluir a conta -->
+<h3 style="color:#FF8C00;">⚠️ Excluir minha conta</h3>
 <form method="POST" action="/excluir-conta" 
   onsubmit="return confirm('⚠️ Tem certeza que deseja excluir sua conta? Esta ação não pode ser desfeita.');">
   <button type="submit" style="background:#FF0000; color:#FFF; border:1px solid #FF0000; padding:10px; font-size:16px; cursor:pointer;">
@@ -357,29 +359,39 @@ app.post('/excluir-alias', async (req,res)=>{
   if(u.aliases.has(alias)) { u.aliases.delete(alias); await u.save(); }
   res.redirect('/painel');
 });
+
 // -------- USUÁRIO EXCLUIR PRÓPRIA CONTA --------
 app.post('/excluir-conta', async (req, res) => {
   const usuario = req.session.usuario;
   if (!usuario) return res.redirect('/login');
 
-  await Usuario.deleteOne({ nome: usuario }); // apaga do MongoDB
-  req.session.destroy(() => {
-    res.send(`
-      <html>
-      <head>
-      <style>
-      body { background:#0A0A0A; color:#FF0000; font-family:'Orbitron',sans-serif; text-align:center; padding-top:80px; }
-      a { color:#00FFFF; font-size:18px; text-decoration:none; border:1px solid #00FFFF; padding:10px 20px; box-shadow:0 0 10px #00FFFF; }
-      </style>
-      </head>
-      <body>
-      <h1>🗑️ Conta excluída com sucesso</h1>
-      <p>Todos os seus dados foram removidos permanentemente.</p>
-      <a href="/login">Voltar ao início</a>
-      </body>
-      </html>
-    `);
-  });
+  try {
+    const deleted = await Usuario.findOneAndDelete({ nome: usuario });
+    if (!deleted) {
+      return res.status(404).send(`<p style="color:red;">Usuário não encontrado. <a href="/login">Voltar</a></p>`);
+    }
+
+    req.session.destroy(() => {
+      res.send(`
+        <html>
+        <head>
+        <style>
+        body { background:#0A0A0A; color:#FF0000; font-family:'Orbitron',sans-serif; text-align:center; padding-top:80px; }
+        a { color:#00FFFF; font-size:18px; text-decoration:none; border:1px solid #00FFFF; padding:10px 20px; box-shadow:0 0 10px #00FFFF; }
+        </style>
+        </head>
+        <body>
+        <h1>🗑️ Conta excluída com sucesso</h1>
+        <p>Todos os seus dados foram removidos permanentemente.</p>
+        <a href="/login">Voltar ao início</a>
+        </body>
+        </html>
+      `);
+    });
+  } catch (err) {
+    console.error('[ExcluirConta] Erro:', err);
+    res.status(500).send(`<p style="color:red;">Erro interno ao excluir conta. Verifique os logs do servidor.</p>`);
+  }
 });
 
 // -------- ADMIN EXCLUIR USUÁRIOS --------
