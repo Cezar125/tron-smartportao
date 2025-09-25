@@ -257,16 +257,18 @@ app.post('/excluir-conta', async (req, res) => {
     res.status(500).send('Erro interno ao excluir a conta.');
   }
 });
-
 // -------- PAINEL --------
-app.get('/painel', async (req,res)=>{
+app.get('/painel', async (req, res) => {
   const usuario = req.session.usuario;
-  if(!usuario) return res.redirect('/login');
+  if (!usuario) return res.redirect('/login');
 
-  const u = await Usuario.findOne({ nome: usuario });
+  // Busca pelo ID
+  const u = await Usuario.findById(usuario.id);
+  if (!u) return res.redirect('/login');
+
   const aliases = u.aliases || new Map();
   let lista = '';
-  for(const [alias,url] of aliases) {
+  for (const [alias, url] of aliases) {
     lista += `<li><strong>${alias}</strong><br>
     <div style="position:relative; overflow-x:auto; white-space:nowrap; padding:10px; background-color:#1F1F1F; border:1px solid #8A2BE2; box-shadow:0 0 10px #8A2BE2; margin-top:5px;">
       <span style="word-break:break-all; color:#39FF14;">${url}</span>
@@ -285,7 +287,7 @@ app.get('/painel', async (req,res)=>{
     </form></li>`;
   }
 
-  const adminPanel = usuario==='admin' ? `<h3>Usuários cadastrados</h3>
+  const adminPanel = usuario.nome === 'admin' ? `<h3>Usuários cadastrados</h3>
     <ul>${(await Usuario.find()).map(u=>`<li>${u.nome}</li>`).join('')}</ul>
     <p><a href="/excluir-usuario">🛠️ Administração</a></p>` : '';
 
@@ -305,7 +307,7 @@ a { color:#00FFFF; text-decoration:none;}
 <body>
 <h1 style="font-size:48px;">TRON</h1>
 <h2>Smart Portão</h2>
-<h3>Painel de ${usuario}</h3>
+<h3>Painel de ${usuario.nome}</h3>
 <p><a href="/logout">Sair</a></p>
 ${adminPanel}
 <h3>Aliases cadastrados:</h3>
@@ -318,7 +320,6 @@ ${adminPanel}
 </form>
 <hr>
 <!-- Botão para excluir a conta -->
-<h3 style="color:#FF8C00;">⚠️ Excluir minha conta</h3>
 <form method="POST" action="/excluir-conta" 
   onsubmit="return confirm('⚠️ Tem certeza que deseja excluir sua conta? Esta ação não pode ser desfeita.');">
   <button type="submit" style="background:#FF0000; color:#FFF; border:1px solid #FF0000; padding:10px; font-size:16px; cursor:pointer;">
@@ -329,6 +330,8 @@ ${adminPanel}
 </html>
   `);
 });
+
+
 
 // -------- CADASTRAR ALIAS --------
 app.post('/cadastrar-alias', async (req,res)=>{
@@ -360,17 +363,14 @@ app.post('/excluir-alias', async (req,res)=>{
   res.redirect('/painel');
 });
 
+
 // -------- USUÁRIO EXCLUIR PRÓPRIA CONTA --------
 app.post('/excluir-conta', async (req, res) => {
   const usuario = req.session.usuario;
   if (!usuario) return res.redirect('/login');
 
   try {
-    const deleted = await Usuario.findOneAndDelete({ nome: usuario });
-    if (!deleted) {
-      return res.status(404).send(`<p style="color:red;">Usuário não encontrado. <a href="/login">Voltar</a></p>`);
-    }
-
+    await Usuario.findByIdAndDelete(usuario.id); // Apaga do MongoDB
     req.session.destroy(() => {
       res.send(`
         <html>
@@ -389,8 +389,8 @@ app.post('/excluir-conta', async (req, res) => {
       `);
     });
   } catch (err) {
-    console.error('[ExcluirConta] Erro:', err);
-    res.status(500).send(`<p style="color:red;">Erro interno ao excluir conta. Verifique os logs do servidor.</p>`);
+    console.error(err);
+    res.send('❌ Erro ao excluir a conta. <a href="/painel">Voltar</a>');
   }
 });
 
