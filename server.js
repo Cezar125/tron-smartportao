@@ -233,6 +233,29 @@ app.post('/recuperar', async (req,res)=>{
 
 // -------- LOGOUT --------
 app.get('/logout', (req,res)=>{ req.session.destroy(()=>res.redirect('/login')) });
+app.post('/excluir-conta', async (req, res) => {
+  if (!req.session.usuario) {
+    return res.redirect('/login');
+  }
+
+  try {
+    await db.collection('usuarios').deleteOne({ usuario: req.session.usuario });
+
+    req.session.destroy(() => {
+      res.send(`
+        <html>
+          <body style="font-family: Arial; text-align:center; margin-top:50px;">
+            <h2>✅ Sua conta foi excluída com sucesso.</h2>
+            <a href="/login">Voltar para o login</a>
+          </body>
+        </html>
+      `);
+    });
+  } catch (err) {
+    console.error('Erro ao excluir conta:', err);
+    res.status(500).send('Erro interno ao excluir a conta.');
+  }
+});
 
 // -------- PAINEL --------
 app.get('/painel', async (req,res)=>{
