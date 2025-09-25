@@ -315,6 +315,14 @@ ${adminPanel}
 <input type="text" name="url" placeholder="URL do Voice Monkey" required><br>
 <button type="submit">Cadastrar</button>
 </form>
+<hr>
+<!-- Botão para excluir a conta -->
+<form method="POST" action="/excluir-conta" 
+  onsubmit="return confirm('⚠️ Tem certeza que deseja excluir sua conta? Esta ação não pode ser desfeita.');">
+  <button type="submit" style="background:#FF0000; color:#FFF; border:1px solid #FF0000; padding:10px; font-size:16px; cursor:pointer;">
+    🗑️ Excluir minha conta
+  </button>
+</form>
 </body>
 </html>
   `);
