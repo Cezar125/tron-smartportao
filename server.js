@@ -106,6 +106,56 @@ app.post('/login', async (req, res) => {
   req.session.usuario = usuario;
   res.redirect('/painel');
 });
+app.get('/excluir-conta', async (req, res) => {
+  if (!req.session.usuario) return res.redirect('/login');
+
+  res.send(`
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron&display=swap');
+body{background:#0A0A0A;color:#00FFFF;font-family:'Orbitron',sans-serif;text-align:center;padding:50px;}
+h1{text-shadow:0 0 10px #00FFFF;}
+form{margin-top:30px;}
+button{background:#000;color:#FF4444;border:1px solid #FF4444;padding:10px 20px;font-size:16px;box-shadow:0 0 10px #FF4444;cursor:pointer;}
+a{color:#00FFFF;text-decoration:none;display:inline-block;margin-top:30px;}
+</style>
+</head>
+<body>
+<h1>⚠️ Excluir Conta</h1>
+<p>Você está prestes a excluir sua conta <strong>${req.session.usuario}</strong>.</p>
+<form method="POST" action="/excluir-conta">
+  <input type="hidden" name="usuario" value="${req.session.usuario}">
+  <button type="submit">🗑️ Confirmar exclusão</button>
+</form>
+<a href="/painel">Voltar ao painel</a>
+</body>
+</html>
+  `);
+});
+app.post('/excluir-conta', async (req, res) => {
+  if (!req.session.usuario) return res.redirect('/login');
+
+  const { usuario } = req.body;
+  if (usuario !== req.session.usuario) return res.status(403).send("Operação não permitida");
+
+  await Usuario.deleteOne({ nome: usuario });
+  req.session.destroy(); // encerra a sessão
+  res.send(`
+<html>
+<head>
+<style>
+body{background:#0A0A0A;color:#00FF00;font-family:sans-serif;text-align:center;padding:50px;}
+h1{font-size:24px;}
+</style>
+</head>
+<body>
+<h1>✅ Sua conta foi excluída com sucesso.</h1>
+<p>Obrigado por usar o TronAccess.</p>
+</body>
+</html>
+  `);
+});
 
 
 // -------- REGISTRO --------
