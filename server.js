@@ -85,10 +85,6 @@ h1,h2,h3 { text-shadow:0 0 10px #00FFFF;}
 <p><a href="/registrar">Criar nova conta</a></p>
 <p><a href="/recuperar">Esqueci minha senha</a></p>
 </body>
-<form method="POST" action="/excluir-conta" onsubmit="return confirm('Tem certeza que deseja excluir sua conta? Esta ação é irreversível.')">
-  <button type="submit">🗑️ Excluir minha conta</button>
-</form>
-
 </html>
   `);
 });
@@ -285,11 +281,16 @@ ${adminPanel}
 <ul>${lista || '<li>Nenhum alias cadastrado.</li>'}</ul>
 <h3>Cadastrar novo alias</h3>
 <form method="POST" action="/cadastrar-alias">
+<h3>Excluir sua conta</h3>
+<form method="POST" action="/excluir-conta" onsubmit="return confirm('Tem certeza que deseja excluir sua conta? Esta ação é irreversível.')">
+  <button type="submit">🗑️ Excluir minha conta</button>
+</form>
 <input type="text" name="alias" placeholder="Alias" required><br>
 <input type="text" name="url" placeholder="URL do Voice Monkey" required><br>
 <button type="submit">Cadastrar</button>
 </form>
 </body>
+
 </html>
   `);
 });
@@ -310,6 +311,8 @@ app.post('/cadastrar-alias', async (req,res)=>{
   await u.save();
   res.redirect('/painel');
 });
+
+
 
 // -------- EXCLUIR ALIAS --------
 app.post('/excluir-alias', async (req,res)=>{
