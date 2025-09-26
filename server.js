@@ -327,38 +327,6 @@ app.post('/excluir-alias', async (req,res)=>{
   res.redirect('/painel');
 });
 
-// -------- USUÁRIO EXCLUIR PRÓPRIA CONTA --------
-app.post('/excluir-conta', async (req, res) => {
-  const sessao = req.session.usuario;
-  if (!sessao) return res.redirect('/login');
-
-  const { nome, senha } = req.body;
-  if (nome !== sessao) return res.send("❌ Nome de usuário não corresponde à sessão.");
-
-  const usuario = await Usuario.findOne({ nome });
-  if (!usuario) return res.send("❌ Usuário não encontrado.");
-
-  const senhaCorreta = await bcrypt.compare(senha, usuario.senha);
-  if (!senhaCorreta) return res.send("❌ Senha incorreta.");
-
-  await Usuario.deleteOne({ nome });
-  req.session.destroy();
-
-  res.send(`
-<html>
-<head>
-<style>
-body { background:#0A0A0A; color:#00FF00; font-family:'Orbitron',sans-serif; text-align:center; padding:50px; }
-h1 { font-size:32px; text-shadow:0 0 10px #00FF00; }
-</style>
-</head>
-<body>
-<h1>✅ Sua conta foi excluída com sucesso.</h1>
-<p>Obrigado por usar o TronAccess.</p>
-</body>
-</html>
-  `);
-});
 
 
 // -------- ADMIN EXCLUIR USUÁRIOS --------
