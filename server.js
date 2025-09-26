@@ -106,6 +106,44 @@ app.post('/login', async (req, res) => {
   req.session.usuario = usuario;
   res.redirect('/painel');
 });
+// --------  EXCLUIR DADOS USUÁRIO --------
+app.get('/excluir-usuario', async (req,res)=>{
+  if(req.session.usuario !== 'admin') return res.redirect('/login');
+
+  const lista = (await Usuario.find()).map(u=>`<li><strong>${u.nome}</strong>
+  <form method="POST" action="/excluir-usuario" style="display:inline;">
+  <input type="hidden" name="usuario" value="${u.nome}">
+  <button type="submit">🗑️ Excluir</button></form></li>`).join('');
+
+  res.send(`
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron&display=swap');
+body{background:#0A0A0A;color:#00FFFF;font-family:'Orbitron',sans-serif;text-align:center;padding:50px;}
+h1{text-shadow:0 0 10px #00FFFF;}
+ul{list-style:none;padding:0;}
+li{background:#1F1F1F;border:1px solid #8A2BE2;color:#39FF14;padding:10px;margin:10px auto;width:60%;box-shadow:0 0 10px #8A2BE2;}
+button{background:#000;color:#FF1493;border:1px solid #FF1493;padding:5px 10px;font-size:14px;box-shadow:0 0 10px #FF1493;cursor:pointer;}
+a{color:#00FFFF;text-decoration:none;display:inline-block;margin-top:30px;}
+</style>
+</head>
+<body>
+<h1>🛠️ Administração</h1>
+<h2>Excluir Usuários</h2>
+<ul>${lista}</ul>
+<a href="/painel">Voltar ao painel</a>
+</body>
+</html>
+  `);
+});
+
+app.post('/excluir-usuario', async (req,res)=>{
+  if(req.session.usuario !== 'admin') return res.redirect('/login');
+  const { usuario } = req.body;
+  await Usuario.deleteOne({ nome: usuario });
+  res.redirect('/excluir-usuario');
+});
 
 // -------- REGISTRO --------
 app.get('/registrar', (req, res) => {
