@@ -326,13 +326,24 @@ app.post('/excluir-alias', async (req,res)=>{
   if(u.aliases.has(alias)) { u.aliases.delete(alias); await u.save(); }
   res.redirect('/painel');
 });
+
 // -------- USUÁRIO EXCLUIR PRÓPRIA CONTA --------
 app.post('/excluir-conta', async (req, res) => {
-  const usuario = req.session.usuario;
-  if (!usuario) return res.redirect('/login');
+  const sessao = req.session.usuario;
+  if (!sessao) return res.redirect('/login');
 
-  await Usuario.deleteOne({ nome: usuario });
+  const { nome, senha } = req.body;
+  if (nome !== sessao) return res.send("❌ Nome de usuário não corresponde à sessão.");
+
+  const usuario = await Usuario.findOne({ nome });
+  if (!usuario) return res.send("❌ Usuário não encontrado.");
+
+  const senhaCorreta = await bcrypt.compare(senha, usuario.senha);
+  if (!senhaCorreta) return res.send("❌ Senha incorreta.");
+
+  await Usuario.deleteOne({ nome });
   req.session.destroy();
+
   res.send(`
 <html>
 <head>
@@ -348,6 +359,7 @@ h1 { font-size:32px; text-shadow:0 0 10px #00FF00; }
 </html>
   `);
 });
+
 
 // -------- ADMIN EXCLUIR USUÁRIOS --------
 app.get('/excluir-usuario', async (req,res)=>{
