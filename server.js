@@ -84,6 +84,13 @@ h1,h2,h3 { text-shadow:0 0 10px #00FFFF;}
 </form>
 <p><a href="/registrar">Criar nova conta</a></p>
 <p><a href="/recuperar">Esqueci minha senha</a></p>
+<h3>⚠️ Excluir minha conta</h3>
+<form method="POST" action="/excluir-conta" onsubmit="return confirm('Tem certeza que deseja excluir sua conta e todos os dados? Esta ação não pode ser desfeita.');">
+  <button type="submit" style="background:#FF0000; color:#FFF; border:1px solid #FF0000; padding:10px; font-size:16px; cursor:pointer;">
+    🗑️ Excluir minha conta
+  </button>
+</form>
+
 </body>
 </html>
   `);
@@ -228,14 +235,17 @@ app.post('/recuperar', async (req,res)=>{
 app.get('/logout', (req,res)=>{ req.session.destroy(()=>res.redirect('/login')) });
 
 // -------- PAINEL --------
-app.get('/painel', async (req,res)=>{
+app.get('/painel', async (req, res) => {
   const usuario = req.session.usuario;
-  if(!usuario) return res.redirect('/login');
+  if (!usuario) return res.redirect('/login');
 
-  const u = await Usuario.findOne({ nome: usuario });
+  // Busca pelo ID
+  const u = await Usuario.findById(usuario.id);
+  if (!u) return res.redirect('/login');
+
   const aliases = u.aliases || new Map();
   let lista = '';
-  for(const [alias,url] of aliases) {
+  for (const [alias, url] of aliases) {
     lista += `<li><strong>${alias}</strong><br>
     <div style="position:relative; overflow-x:auto; white-space:nowrap; padding:10px; background-color:#1F1F1F; border:1px solid #8A2BE2; box-shadow:0 0 10px #8A2BE2; margin-top:5px;">
       <span style="word-break:break-all; color:#39FF14;">${url}</span>
@@ -254,7 +264,7 @@ app.get('/painel', async (req,res)=>{
     </form></li>`;
   }
 
-  const adminPanel = usuario==='admin' ? `<h3>Usuários cadastrados</h3>
+  const adminPanel = usuario.nome === 'admin' ? `<h3>Usuários cadastrados</h3>
     <ul>${(await Usuario.find()).map(u=>`<li>${u.nome}</li>`).join('')}</ul>
     <p><a href="/excluir-usuario">🛠️ Administração</a></p>` : '';
 
@@ -274,26 +284,31 @@ a { color:#00FFFF; text-decoration:none;}
 <body>
 <h1 style="font-size:48px;">TRON</h1>
 <h2>Smart Portão</h2>
-<h3>Painel de ${usuario}</h3>
+<h3>Painel de ${usuario.nome}</h3>
 <p><a href="/logout">Sair</a></p>
 ${adminPanel}
 <h3>Aliases cadastrados:</h3>
 <ul>${lista || '<li>Nenhum alias cadastrado.</li>'}</ul>
 <h3>Cadastrar novo alias</h3>
 <form method="POST" action="/cadastrar-alias">
-<h3>Excluir sua conta</h3>
-<form method="POST" action="/excluir-conta" onsubmit="return confirm('Tem certeza que deseja excluir sua conta? Esta ação é irreversível.')">
-  <button type="submit">🗑️ Excluir minha conta</button>
-</form>
 <input type="text" name="alias" placeholder="Alias" required><br>
 <input type="text" name="url" placeholder="URL do Voice Monkey" required><br>
 <button type="submit">Cadastrar</button>
 </form>
+<hr>
+<!-- Botão para excluir a conta -->
+<form method="POST" action="/excluir-conta" 
+  onsubmit="return confirm('⚠️ Tem certeza que deseja excluir sua conta? Esta ação não pode ser desfeita.');">
+  <button type="submit" style="background:#FF0000; color:#FFF; border:1px solid #FF0000; padding:10px; font-size:16px; cursor:pointer;">
+    🗑️ Excluir minha conta
+  </button>
+</form>
 </body>
-
 </html>
   `);
 });
+
+
 
 // -------- CADASTRAR ALIAS --------
 app.post('/cadastrar-alias', async (req,res)=>{
@@ -312,8 +327,6 @@ app.post('/cadastrar-alias', async (req,res)=>{
   res.redirect('/painel');
 });
 
-
-
 // -------- EXCLUIR ALIAS --------
 app.post('/excluir-alias', async (req,res)=>{
   const usuario = req.session.usuario;
@@ -328,6 +341,35 @@ app.post('/excluir-alias', async (req,res)=>{
 });
 
 
+// -------- USUÁRIO EXCLUIR PRÓPRIA CONTA --------
+app.post('/excluir-conta', async (req, res) => {
+  const usuario = req.session.usuario;
+  if (!usuario) return res.redirect('/login');
+
+  try {
+    await Usuario.findByIdAndDelete(usuario.id); // Apaga do MongoDB
+    req.session.destroy(() => {
+      res.send(`
+        <html>
+        <head>
+        <style>
+        body { background:#0A0A0A; color:#FF0000; font-family:'Orbitron',sans-serif; text-align:center; padding-top:80px; }
+        a { color:#00FFFF; font-size:18px; text-decoration:none; border:1px solid #00FFFF; padding:10px 20px; box-shadow:0 0 10px #00FFFF; }
+        </style>
+        </head>
+        <body>
+        <h1>🗑️ Conta excluída com sucesso</h1>
+        <p>Todos os seus dados foram removidos permanentemente.</p>
+        <a href="/login">Voltar ao início</a>
+        </body>
+        </html>
+      `);
+    });
+  } catch (err) {
+    console.error(err);
+    res.send('❌ Erro ao excluir a conta. <a href="/painel">Voltar</a>');
+  }
+});
 
 // -------- ADMIN EXCLUIR USUÁRIOS --------
 app.get('/excluir-usuario', async (req,res)=>{
