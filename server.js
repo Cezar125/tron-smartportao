@@ -85,6 +85,10 @@ h1,h2,h3 { text-shadow:0 0 10px #00FFFF;}
 <p><a href="/registrar">Criar nova conta</a></p>
 <p><a href="/recuperar">Esqueci minha senha</a></p>
 </body>
+<form method="POST" action="/excluir-conta" onsubmit="return confirm('Tem certeza que deseja excluir sua conta? Esta ação é irreversível.')">
+  <button type="submit">🗑️ Excluir minha conta</button>
+</form>
+
 </html>
   `);
 });
