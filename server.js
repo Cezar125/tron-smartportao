@@ -454,4 +454,3 @@ app.get('/:alias', async (req, res) => {
 
 // ==================== INICIAR SERVIDOR ====================
 app.listen(port, () => console.log(`🚀 Servidor rodando na porta ${port}`));
-
