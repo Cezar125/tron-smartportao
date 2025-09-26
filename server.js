@@ -326,6 +326,28 @@ app.post('/excluir-alias', async (req,res)=>{
   if(u.aliases.has(alias)) { u.aliases.delete(alias); await u.save(); }
   res.redirect('/painel');
 });
+// -------- USUÁRIO EXCLUIR PRÓPRIA CONTA --------
+app.post('/excluir-conta', async (req, res) => {
+  const usuario = req.session.usuario;
+  if (!usuario) return res.redirect('/login');
+
+  await Usuario.deleteOne({ nome: usuario });
+  req.session.destroy();
+  res.send(`
+<html>
+<head>
+<style>
+body { background:#0A0A0A; color:#00FF00; font-family:'Orbitron',sans-serif; text-align:center; padding:50px; }
+h1 { font-size:32px; text-shadow:0 0 10px #00FF00; }
+</style>
+</head>
+<body>
+<h1>✅ Sua conta foi excluída com sucesso.</h1>
+<p>Obrigado por usar o TronAccess.</p>
+</body>
+</html>
+  `);
+});
 
 // -------- ADMIN EXCLUIR USUÁRIOS --------
 app.get('/excluir-usuario', async (req,res)=>{
