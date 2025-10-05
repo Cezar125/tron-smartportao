@@ -253,10 +253,52 @@ ${adminPanel}
 <input type="text" name="url" placeholder="URL do Voice Monkey" required><br>
 <button type="submit">Cadastrar</button>
 </form>
+
+<h3>Salvar comando manual</h3>
+<form id="form-comando" onsubmit="event.preventDefault(); salvarComando();">
+  <input type="text" id="comando-alias" placeholder="Alias (ex: frente)" required><br>
+  <button type="submit">Salvar comando</button>
+</form>
+
+<script>
+  function salvarComando() {
+    const alias = document.getElementById('comando-alias').value;
+    fetch('/salvar-comando', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alias })
+    })
+    .then(res => res.text())
+    .then(msg => alert(msg))
+    .catch(err => alert('Erro ao salvar comando'));
+  }
+</script>
 </body>
 </html>
   `);
 });
+app.post('/salvar-comando', async (req, res) => {
+  const usuario = req.session.usuario;
+  const alias = normalizar(req.body.alias || '');
+
+  if (!usuario || !alias) return res.status(400).send('❌ Dados inválidos.');
+
+  const comando = {
+    frente: alias === 'frente' ? 'abrir' : '',
+    fundos: alias === 'fundos' ? 'abrir' : '',
+    lateral: alias === 'lateral' ? 'abrir' : '',
+    garagemvip: alias === 'garagemvip' ? 'abrir' : ''
+  };
+
+  try {
+    await admin.database().ref(`comando/${usuario}`).set(comando);
+    res.send(`✅ Comando '${alias}' salvo com sucesso`);
+  } catch (err) {
+    console.error('Erro ao salvar comando:', err);
+    res.status(500).send('❌ Erro ao salvar comando');
+  }
+});
+
 // -------- CADASTRAR ALIAS --------
 app.post('/cadastrar-alias', async (req, res) => {
   const usuario = req.session.usuario;
