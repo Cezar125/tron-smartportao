@@ -195,7 +195,6 @@ a:hover { box-shadow:0 0 20px #00FFFF,0 0 30px #00FFFF; transform:scale(1.05);}
 </html>
   `);
 });
-// -------- PAINEL --------
 app.get('/painel', async (req, res) => {
   const usuario = req.session.usuario;
   if (!usuario) return res.redirect('/login');
@@ -277,27 +276,7 @@ ${adminPanel}
 </html>
   `);
 });
-app.post('/salvar-comando', async (req, res) => {
-  const usuario = req.session.usuario;
-  const alias = normalizar(req.body.alias || '');
 
-  if (!usuario || !alias) return res.status(400).send('❌ Dados inválidos.');
-
-  const comando = {
-    frente: alias === 'frente' ? 'abrir' : '',
-    fundos: alias === 'fundos' ? 'abrir' : '',
-    lateral: alias === 'lateral' ? 'abrir' : '',
-    garagemvip: alias === 'garagemvip' ? 'abrir' : ''
-  };
-
-  try {
-    await admin.database().ref(`comando/${usuario}`).set(comando);
-    res.send(`✅ Comando '${alias}' salvo com sucesso`);
-  } catch (err) {
-    console.error('Erro ao salvar comando:', err);
-    res.status(500).send('❌ Erro ao salvar comando');
-  }
-});
 
 // -------- CADASTRAR ALIAS --------
 app.post('/cadastrar-alias', async (req, res) => {
