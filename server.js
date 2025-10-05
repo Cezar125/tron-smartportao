@@ -65,6 +65,11 @@ app.use(session({
   resave: false,
   saveUninitialized: true
 }));
+
+app.get('/', (req, res) => {
+  res.send('Painel TronAccess está online 🚪⚡');
+});
+
 // -------- LOGIN --------
 app.get('/login', (req, res) => {
   res.send(`
