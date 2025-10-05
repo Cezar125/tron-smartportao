@@ -57,6 +57,7 @@ function fireHttpsGet(url, callback) {
   }
 }
 
+
 // ========== MIDDLEWARES ==========
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -66,9 +67,9 @@ app.use(session({
   saveUninitialized: true
 }));
 
-app.get('/', (req, res) => {
-  res.send('Painel TronAccess está online 🚪⚡');
-});
+// ================== ROTAS ==================
+app.get('/', (req, res) => res.redirect('/login'));
+
 
 // -------- LOGIN --------
 app.get('/login', (req, res) => {
