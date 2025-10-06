@@ -4,11 +4,32 @@ import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import https from 'https';
 import dotenv from 'dotenv';
+import admin from 'firebase-admin'; // Adicione este import
 
 dotenv.config(); // Carrega variáveis do .env
 
 const app = express();
 const port = process.env.PORT || 4000;
+
+// ================== CONFIGURAÇÃO FIREBASE ADMIN SDK ==================
+// IMPORTANTE: O conteúdo do seu arquivo serviceAccountKey.json deve ser
+// armazenado como uma variável de ambiente (ex: FIREBASE_SERVICE_ACCOUNT_KEY)
+// no seu ambiente de deploy (OnRender). NUNCA exponha este arquivo publicamente.
+try {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: "https://trontoken-93556-default-rtdb.firebaseio.com" // Sua URL do Realtime Database
+  });
+
+  console.log('✅ Firebase Admin SDK inicializado com sucesso.');
+} catch (error) {
+  console.error('❌ Erro ao inicializar Firebase Admin SDK. Verifique FIREBASE_SERVICE_ACCOUNT_KEY:', error);
+  // Você pode querer que a aplicação não inicie se o Firebase Admin falhar
+  // process.exit(1);
+}
+const db = admin.database(); // Referência ao Realtime Database
 
 // ================== CONFIGURAÇÃO MONGODB ==================
 const mongoUri = process.env.MONGODB_URI;
@@ -40,12 +61,12 @@ const normalizar = (texto = '') => {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(session({
-  secret: process.env.SESSION_SECRET, // <-- pega do .env
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: true
 }));
 
-// ================== FUNÇÃO FIRE HTTPS ==================
+// ================== FUNÇÃO FIRE HTTPS (mantida para o fluxo "com senha") ==================
 function fireHttpsGet(url, callback) {
   try {
     https.get(url, callback).on('error', err => console.error('Erro na requisição HTTPS:', err));
@@ -57,7 +78,7 @@ function fireHttpsGet(url, callback) {
 // ================== ROTAS ==================
 app.get('/', (req, res) => res.redirect('/login'));
 
-// -------- LOGIN --------
+// -------- LOGIN -------- (mantido sem alterações)
 app.get('/login', (req, res) => {
   res.send(`
 <html>
@@ -107,7 +128,7 @@ app.post('/login', async (req, res) => {
   res.redirect('/painel');
 });
 
-// -------- REGISTRO --------
+// -------- REGISTRO -------- (mantido sem alterações)
 app.get('/registrar', (req, res) => {
   res.send(`
 <html>
@@ -126,7 +147,6 @@ h1,h2,h3 { text-shadow:0 0 10px #00FFFF;}
 <h2>Smart Portão</h2>
 <h3>Cadastro de Usuário</h3>
 <form method="POST" action="/registrar">
-<label>Nome de usuário:</label><br>
 <input type="text" name="usuario" required><br><br>
 <label>Senha:</label><br>
 <input type="password" name="senha" required><br><br>
@@ -160,7 +180,7 @@ app.post('/registrar', async (req, res) => {
   res.redirect('/cadastro-sucesso');
 });
 
-// -------- CADASTRO SUCESSO --------
+// -------- CADASTRO SUCESSO -------- (mantido sem alterações)
 app.get('/cadastro-sucesso', (req, res) => {
   res.send(`
 <html>
@@ -182,7 +202,7 @@ a:hover { box-shadow:0 0 20px #00FFFF,0 0 30px #00FFFF; transform:scale(1.05);}
   `);
 });
 
-// -------- RECUPERAR SENHA --------
+// -------- RECUPERAR SENHA -------- (mantido sem alterações)
 app.get('/recuperar', (req,res)=>{
   res.send(`
 <html>
@@ -224,10 +244,10 @@ app.post('/recuperar', async (req,res)=>{
   res.send('✅ Senha redefinida com sucesso. <a href="/login">Ir para login</a>');
 });
 
-// -------- LOGOUT --------
+// -------- LOGOUT -------- (mantido sem alterações)
 app.get('/logout', (req,res)=>{ req.session.destroy(()=>res.redirect('/login')) });
 
-// -------- PAINEL --------
+// -------- PAINEL -------- (mantido sem alterações significativas)
 app.get('/painel', async (req,res)=>{
   const usuario = req.session.usuario;
   if(!usuario) return res.redirect('/login');
@@ -290,7 +310,7 @@ ${adminPanel}
   `);
 });
 
-// -------- CADASTRAR ALIAS --------
+// -------- CADASTRAR ALIAS -------- (mantido sem alterações)
 app.post('/cadastrar-alias', async (req,res)=>{
   const usuario = req.session.usuario;
   if(!usuario) return res.redirect('/login');
@@ -307,7 +327,7 @@ app.post('/cadastrar-alias', async (req,res)=>{
   res.redirect('/painel');
 });
 
-// -------- EXCLUIR ALIAS --------
+// -------- EXCLUIR ALIAS -------- (mantido sem alterações)
 app.post('/excluir-alias', async (req,res)=>{
   const usuario = req.session.usuario;
   if(!usuario) return res.redirect('/login');
@@ -320,7 +340,7 @@ app.post('/excluir-alias', async (req,res)=>{
   res.redirect('/painel');
 });
 
-// -------- ADMIN EXCLUIR USUÁRIOS --------
+// -------- ADMIN EXCLUIR USUÁRIOS -------- (mantido sem alterações)
 app.get('/excluir-usuario', async (req,res)=>{
   if(req.session.usuario !== 'admin') return res.redirect('/login');
 
@@ -359,12 +379,63 @@ app.post('/excluir-usuario', async (req,res)=>{
   res.redirect('/excluir-usuario');
 });
 
-// Rota fixa para garagemvip
+// ================== NOVA ROTA: ACIONAR COMANDO VIA FIREBASE (PARA BIOMETRIA) ==================
+// Esta rota deve ser chamada pela sua Alexa Skill quando a opção "com biometria" for escolhida.
+app.post('/alexa-biometria-trigger', async (req, res) => {
+  // A Alexa Skill deve enviar no corpo da requisição (JSON):
+  // {
+  //   "portao": "frente", // ou "lateral", "garagemvip", etc.
+  //   "usuario": "nome_do_usuario_alexa" // Nome do usuário que configurou a skill ou identificado pela Alexa
+  // }
+  const { portao, usuario } = req.body;
+
+  if (!portao || !usuario) {
+    return res.status(400).send('❌ Parâmetros "portao" e "usuario" são obrigatórios no corpo da requisição.');
+  }
+
+  const portaoNormalizado = normalizar(portao);
+  const usuarioNormalizado = normalizar(usuario);
+
+  try {
+    // Busca o usuário no MongoDB para garantir que ele existe e pode acionar aliases
+    const u = await Usuario.findOne({ nome: usuarioNormalizado });
+    if (!u) {
+      return res.status(404).send(`❌ Usuário "${usuario}" não encontrado.`);
+    }
+    // Opcional: Verificar se o alias 'portaoNormalizado' existe para este usuário no MongoDB
+    // if (!u.aliases || !u.aliases.has(portaoNormalizado)) {
+    //   return res.status(404).send(`❌ Alias "${portaoNormalizado}" não encontrado para o usuário "${usuario}".`);
+    // }
+
+    // Cria uma referência para o nó de comando no seu Realtime Database
+    // Ex: /comandosPendentes/nome_do_usuario/frente
+    const comandoRef = db.ref(`/comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
+
+    // Escreve o comando no Realtime Database
+    // O seu app Android estará "ouvindo" este nó específico para este usuário e portão.
+    await comandoRef.set({
+      acao: 'abrir',
+      solicitante: 'alexa',
+      timestamp: admin.database.ServerValue.TIMESTAMP, // Timestamp do servidor Firebase
+      status: 'pendente' // Indica que o comando está aguardando ação do app
+    });
+
+    res.status(200).send(`✅ Comando '${portao}' enviado para o Firebase para processamento biométrico do usuário '${usuario}'.`);
+
+  } catch (error) {
+    console.error(`❌ Erro ao enviar comando para o Firebase para o portão '${portao}' do usuário '${usuario}':`, error);
+    res.status(500).send('❌ Erro interno ao processar comando da Alexa via Firebase.');
+  }
+});
+
+
+// -------- ROTAS ANTIGAS: GARAGEMVIP E CATCH-ALL (:ALIAS) - MANTIDAS PARA O FLUXO "COM SENHA" --------
+// Essas rotas disparam a URL diretamente, sem biometria.
 app.get('/garagemvip', async (req, res) => {
   try {
     const uRaw = req.query.usuario || '';
     const usuario = normalizar(uRaw);
-    const alias = 'garagemvip';
+    const alias = 'garagemvip'; // Alias fixo para esta rota
 
     const u = await Usuario.findOne({ nome: usuario }).lean();
     if (!u) return res.status(404).send(`❌ Usuário "${uRaw}" não encontrado.`);
@@ -375,7 +446,8 @@ app.get('/garagemvip', async (req, res) => {
       return res.status(404).send(`❌ Alias "${alias}" não encontrado para o usuário "${uRaw}". Aliases disponíveis: ${disponiveis}.`);
     }
 
-    https.get(url, response => {
+    // DISPARO DIRETO DA URL (fluxo "com senha")
+    fireHttpsGet(url, response => { // Usando sua função fireHttpsGet
       let data = '';
       response.on('data', chunk => { data += chunk; });
       response.on('end', () => {
@@ -392,7 +464,7 @@ app.get('/garagemvip', async (req, res) => {
   }
 });
 
-// Catch-all para qualquer outro alias
+// Catch-all para qualquer outro alias (fluxo "com senha")
 app.get('/:alias', async (req, res) => {
   try {
     const alias = normalizar(req.params.alias);
@@ -406,7 +478,8 @@ app.get('/:alias', async (req, res) => {
     const url = u.aliases?.[alias];
     if (!url) return res.status(404).send(`❌ Alias "${alias}" não encontrado para o usuário "${usuario}".`);
 
-    https.get(url, response => {
+    // DISPARO DIRETO DA URL (fluxo "com senha")
+    fireHttpsGet(url, response => { // Usando sua função fireHttpsGet
       let data = '';
       response.on('data', chunk => { data += chunk; });
       response.on('end', () => {
