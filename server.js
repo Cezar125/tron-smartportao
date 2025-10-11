@@ -26,8 +26,7 @@ try {
   console.log('✅ Firebase Admin SDK inicializado com sucesso.');
 } catch (error) {
   console.error('❌ Erro ao inicializar Firebase Admin SDK. Verifique FIREBASE_SERVICE_ACCOUNT_KEY:', error);
-  // Você pode querer que a aplicação não inicie se o Firebase Admin falhar
-  // process.exit(1);
+  process.exit(1); // <--- ATUALIZADO: Sai se o Firebase Admin não iniciar
 }
 const db = admin.database(); // Referência ao Realtime Database
 
@@ -66,7 +65,7 @@ app.use(session({
   saveUninitialized: true
 }));
 
-// ================== FUNÇÃO FIRE HTTPS (mantida para o fluxo "com senha") ==================
+// ================== FUNÇÃO FIRE HTTPS ==================
 function fireHttpsGet(url, callback) {
   try {
     https.get(url, callback).on('error', err => console.error('Erro na requisição HTTPS:', err));
@@ -78,7 +77,7 @@ function fireHttpsGet(url, callback) {
 // ================== ROTAS ==================
 app.get('/', (req, res) => res.redirect('/login'));
 
-// -------- LOGIN -------- (mantido sem alterações)
+// -------- LOGIN --------
 app.get('/login', (req, res) => {
   res.send(`
 <html>
@@ -128,7 +127,7 @@ app.post('/login', async (req, res) => {
   res.redirect('/painel');
 });
 
-// -------- REGISTRO -------- (mantido sem alterações)
+// -------- REGISTRO --------
 app.get('/registrar', (req, res) => {
   res.send(`
 <html>
@@ -180,7 +179,7 @@ app.post('/registrar', async (req, res) => {
   res.redirect('/cadastro-sucesso');
 });
 
-// -------- CADASTRO SUCESSO -------- (mantido sem alterações)
+// -------- CADASTRO SUCESSO --------
 app.get('/cadastro-sucesso', (req, res) => {
   res.send(`
 <html>
@@ -202,7 +201,7 @@ a:hover { box-shadow:0 0 20px #00FFFF,0 0 30px #00FFFF; transform:scale(1.05);}
   `);
 });
 
-// -------- RECUPERAR SENHA -------- (mantido sem alterações)
+// -------- RECUPERAR SENHA --------
 app.get('/recuperar', (req,res)=>{
   res.send(`
 <html>
@@ -244,10 +243,10 @@ app.post('/recuperar', async (req,res)=>{
   res.send('✅ Senha redefinida com sucesso. <a href="/login">Ir para login</a>');
 });
 
-// -------- LOGOUT -------- (mantido sem alterações)
+// -------- LOGOUT --------
 app.get('/logout', (req,res)=>{ req.session.destroy(()=>res.redirect('/login')) });
 
-// -------- PAINEL -------- (mantido sem alterações significativas)
+// -------- PAINEL --------
 app.get('/painel', async (req,res)=>{
   const usuario = req.session.usuario;
   if(!usuario) return res.redirect('/login');
@@ -310,7 +309,7 @@ ${adminPanel}
   `);
 });
 
-// -------- CADASTRAR ALIAS -------- (mantido sem alterações)
+// -------- CADASTRAR ALIAS --------
 app.post('/cadastrar-alias', async (req,res)=>{
   const usuario = req.session.usuario;
   if(!usuario) return res.redirect('/login');
@@ -327,7 +326,7 @@ app.post('/cadastrar-alias', async (req,res)=>{
   res.redirect('/painel');
 });
 
-// -------- EXCLUIR ALIAS -------- (mantido sem alterações)
+// -------- EXCLUIR ALIAS --------
 app.post('/excluir-alias', async (req,res)=>{
   const usuario = req.session.usuario;
   if(!usuario) return res.redirect('/login');
@@ -340,7 +339,7 @@ app.post('/excluir-alias', async (req,res)=>{
   res.redirect('/painel');
 });
 
-// -------- ADMIN EXCLUIR USUÁRIOS -------- (mantido sem alterações)
+// -------- ADMIN EXCLUIR USUÁRIOS --------
 app.get('/excluir-usuario', async (req,res)=>{
   if(req.session.usuario !== 'admin') return res.redirect('/login');
 
