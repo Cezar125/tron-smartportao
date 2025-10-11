@@ -1,76 +1,115 @@
+// ====== IMPORTS ======
 import express from "express";
-import admin from "firebase-admin";
+import session from "express-session";
+import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
+import https from "https";
+import admin from "firebase-admin";
+import fs from "fs";
 
+// ====== CONFIGURAÇÃO ======
 dotenv.config();
 const app = express();
+const port = process.env.PORT || 4000;
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// 🔹 Caminho do seu arquivo JSON de credenciais do Firebase
-const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS_JSON);
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "segredo",
+    resave: false,
+    saveUninitialized: true,
+  })
+);
 
-// 🔹 Inicializa Firebase Admin
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://trontoken-93556-default-rtdb.firebaseio.com",
+// ====== CONEXÃO MONGODB ======
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => console.log("✅ Conectado ao MongoDB"))
+  .catch((err) => console.error("Erro MongoDB:", err));
+
+// ====== MODELO DE USUÁRIO ======
+const userSchema = new mongoose.Schema({
+  nome: String,
+  email: String,
+  senha: String,
+  fcmToken: String, // 🔹 Token do app Android
+  comando: String,  // 🔹 Último comando enviado (opcional)
 });
+const User = mongoose.model("User", userSchema);
 
-const db = admin.database();
-
-// --- Função para enviar notificação FCM ---
-async function enviarNotificacaoPush(userId, portao) {
-  try {
-    const tokenRef = db.ref(`tokens/${userId}`);
-    const snapshot = await tokenRef.once("value");
-    const token = snapshot.val();
-
-    if (!token) {
-      console.log(`⚠️ Nenhum token FCM encontrado para ${userId}`);
-      return;
-    }
-
-    const mensagem = {
-      token,
-      notification: {
-        title: "TronAccess 🚪",
-        body: `Comando recebido: abrir ${portao}`,
-      },
-      data: {
-        portao: portao,
-        acao: "abrir",
-      },
-      android: {
-        priority: "high",
-      },
-    };
-
-    await admin.messaging().send(mensagem);
-    console.log(`✅ Notificação enviada para ${userId} (${portao})`);
-  } catch (error) {
-    console.error("❌ Erro ao enviar notificação:", error);
-  }
+// ====== FIREBASE ADMIN ======
+if (!admin.apps.length) {
+  const firebaseConfig = JSON.parse(process.env.FIREBASE_CREDENTIALS_JSON);
+  admin.initializeApp({
+    credential: admin.credential.cert(firebaseConfig),
+  });
+  console.log("✅ Firebase Admin inicializado");
 }
 
-// --- Endpoint para simular comando vindo da Alexa ---
-app.post("/enviar-comando", async (req, res) => {
-  const { userId, portao, acao } = req.body;
+// ====== ROTA PRINCIPAL ======
+app.get("/", (req, res) => {
+  res.send("🌐 Servidor TRON Access rodando e pronto para enviar notificações.");
+});
 
-  if (!userId || !portao || !acao) {
-    return res.status(400).json({ erro: "Parâmetros inválidos" });
+// ====== REGISTRA TOKEN DO APP ======
+app.post("/registrarToken", async (req, res) => {
+  const { email, token } = req.body;
+  if (!email || !token) return res.status(400).send("Campos obrigatórios.");
+
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).send("Usuário não encontrado.");
+
+  user.fcmToken = token;
+  await user.save();
+
+  console.log("📱 Token FCM atualizado para:", email, token);
+  res.send("Token registrado com sucesso.");
+});
+
+// ====== ENVIA NOTIFICAÇÃO PARA O APP ======
+app.post("/enviarComando", async (req, res) => {
+  const { email, comando } = req.body;
+  if (!email || !comando) return res.status(400).send("Campos obrigatórios.");
+
+  const user = await User.findOne({ email });
+  if (!user || !user.fcmToken) {
+    return res.status(404).send("Usuário não encontrado ou sem token.");
   }
 
+  const mensagem = {
+    token: user.fcmToken,
+    notification: {
+      title: "Monitorando portão 🚪",
+      body: `Comando recebido: ${comando}`,
+    },
+    data: {
+      comando,
+    },
+  };
+
   try {
-    await db.ref(`comandosPendentes/${userId}/${portao}`).set(acao);
-    console.log(`📡 Comando '${acao}' salvo para ${userId}/${portao}`);
-
-    // Envia o push para o app acordar
-    await enviarNotificacaoPush(userId, portao);
-
-    return res.json({ sucesso: true, mensagem: "Comando enviado com sucesso" });
+    const response = await admin.messaging().send(mensagem);
+    console.log("✅ Notificação FCM enviada:", response);
+    res.send("Comando enviado com sucesso.");
   } catch (error) {
-    console.error("❌ Erro ao enviar comando:", error);
-    return res.status(500).json({ erro: "Erro interno no servidor" });
+    console.error("Erro ao enviar FCM:", error);
+    res.status(500).send("Erro ao enviar notificação FCM.");
   }
 });
 
-app.listen(4000, () => console.log("🚀 Servidor TronAccess ativo na porta 4000"));
+// ====== SERVIDOR HTTPS OPCIONAL ======
+if (process.env.SSL_KEY && process.env.SSL_CERT) {
+  const options = {
+    key: fs.readFileSync(process.env.SSL_KEY),
+    cert: fs.readFileSync(process.env.SSL_CERT),
+  };
+  https.createServer(options, app).listen(port, () => {
+    console.log(`🌐 HTTPS Server rodando na porta ${port}`);
+  });
+} else {
+  app.listen(port, () => {
+    console.log(`🌐 HTTP Server rodando na porta ${port}`);
+  });
+}
