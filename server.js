@@ -75,15 +75,7 @@ function fireHttpsGet(url, callback) {
 }
 // ... (seu código antes de app.get('/')) ...
 
-// ================== ROTA DE TESTE DE LOGS ==================
-app.get('/testar-logs', (req, res) => {
-  console.log('##############################################');
-  console.log('## TESTE DE LOGS: Rota /testar-logs foi acessada! ##');
-  console.log('##############################################');
-  res.status(200).send('Rota de teste de logs acessada com sucesso!');
-});
 
-// ... (o restante do seu server.js) ...
 
 // ================== ROTAS ==================
 app.get('/', (req, res) => res.redirect('/login'));
@@ -389,17 +381,22 @@ app.post('/excluir-usuario', async (req,res)=>{
   res.redirect('/excluir-usuario');
 });
 
+// ... (seu código existente antes desta rota) ...
+
 // ================== NOVA ROTA: ACIONAR COMANDO VIA FIREBASE (PARA BIOMETRIA) ==================
 // Esta rota deve ser chamada pela sua Alexa Skill quando a opção "com biometria" for escolhida.
 app.post('/alexa-biometria-trigger', async (req, res) => {
-  // A Alexa Skill deve enviar no corpo da requisição (JSON):
-  // {
-  //   "portao": "frente", // ou "lateral", "garagemvip", etc.
-  //   "usuario": "nome_do_usuario_alexa" // Nome do usuário que configurou a skill ou identificado pela Alexa
-  // }
+  // --- INÍCIO DOS LOGS DE DEBUG ---
+  console.log('####################################################');
+  console.log('## DEBUG: REQUISICAO RECEBIDA EM /alexa-biometria-trigger ##');
+  console.log(`DEBUG: Método: ${req.method}. Corpo: ${JSON.stringify(req.body)}`);
+  console.log('####################################################');
+  // --- FIM DOS LOGS DE DEBUG ---
+
   const { portao, usuario } = req.body;
 
   if (!portao || !usuario) {
+    console.error('DEBUG: Erro de validação: Parâmetros "portao" e "usuario" são obrigatórios.');
     return res.status(400).send('❌ Parâmetros "portao" e "usuario" são obrigatórios no corpo da requisição.');
   }
 
@@ -408,35 +405,75 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
 
   try {
     // Busca o usuário no MongoDB para garantir que ele existe e pode acionar aliases
-    const u = await Usuario.findOne({ nome: usuarioNormalizado });
-    if (!u) {
-      return res.status(404).send(`❌ Usuário "${usuario}" não encontrado.`);
+    const usuarioMongo = await Usuario.findOne({ nome: usuarioNormalizado });
+    if (!usuarioMongo) {
+      console.error(`DEBUG: Usuário "${usuario}" não encontrado no MongoDB.`);
+      return res.status(404).send(`❌ Usuário "${usuario}" não encontrado no MongoDB.`);
     }
-    // Opcional: Verificar se o alias 'portaoNormalizado' existe para este usuário no MongoDB
-    // if (!u.aliases || !u.aliases.has(portaoNormalizado)) {
-    //   return res.status(404).send(`❌ Alias "${portaoNormalizado}" não encontrado para o usuário "${usuario}".`);
-    // }
 
-    // Cria uma referência para o nó de comando no seu Realtime Database
-    // Ex: /comandosPendentes/nome_do_usuario/frente
+    // --- 1. Escrever o comando no Realtime Database (como já faz) ---
+    // Seu app Android vai "escutar" nesse nó ou ser acordado para lê-lo.
     const comandoRef = db.ref(`/comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
-
-    // Escreve o comando no Realtime Database
-    // O seu app Android estará "ouvindo" este nó específico para este usuário e portão.
     await comandoRef.set({
       acao: 'abrir',
       solicitante: 'alexa',
-      timestamp: admin.database.ServerValue.TIMESTAMP, // Timestamp do servidor Firebase
-      status: 'pendente' // Indica que o comando está aguardando ação do app
+      usuario: usuarioNormalizado, // Garante que o usuario está no comando RTDB
+      timestamp: admin.database.ServerValue.TIMESTAMP,
+      status: 'pendente'
     });
+    console.log(`✅ Comando RTDB registrado: /comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
 
-    res.status(200).send(`✅ Comando '${portao}' enviado para o Firebase para processamento biométrico do usuário '${usuario}'.`);
+
+    // --- 2. Obter FCM Token do Firebase Realtime Database (NOVO) ---
+    const fcmTokenRef = db.ref(`/tokens/${usuarioNormalizado}`);
+    const fcmTokenSnapshot = await fcmTokenRef.once('value'); // Lê o token UMA VEZ
+    const fcmToken = fcmTokenSnapshot.val(); // Obtém o valor do token
+    console.log(`DEBUG: FCM Token recuperado do RTDB para ${usuarioNormalizado}: ${fcmToken ? 'ENCONTRADO' : 'NÃO ENCONTRADO'}`);
+
+    if (!fcmToken) {
+        console.warn(`⚠️ Usuário ${usuarioNormalizado} não tem FCM Token registrado no Firebase RTDB. Não é possível enviar notificação push.`);
+        // A Alexa ainda pode responder com sucesso, pois o comando está no RTDB e o app pode pegá-lo se já estiver aberto.
+    } else {
+        const message = {
+            token: fcmToken, // Usa o token obtido do RTDB
+            data: { // Dados que seu app Android receberá no onMessageReceived
+                userId: usuarioNormalizado,
+                portaoAlias: portaoNormalizado,
+                tipoComando: 'abrirComBiometria', // Tipo de comando para seu app saber o que fazer
+            },
+            notification: { // Esta parte opcional exibe uma notificação na barra de status
+                title: 'TRON Smart Portão',
+                body: `Confirme para abrir o portão ${portaoNormalizado}.`
+            },
+            android: { // Configurações específicas para Android
+                priority: 'high'
+            },
+            apns: { // Configurações específicas para iOS (se você tivesse um app iOS)
+                headers: {
+                    'apns-priority': '10', // Prioridade alta
+                },
+            },
+        };
+
+        try {
+            const response = await admin.messaging().send(message);
+            console.log(`✅ Mensagem FCM enviada com sucesso para ${usuarioNormalizado} (${portaoNormalizado}):`, response);
+        } catch (fcmError) {
+            console.error(`❌ Erro ao enviar FCM para ${usuarioNormalizado} (${portaoNormalizado}):`, fcmError);
+            // Loga o erro, mas não necessariamente falha a requisição da Alexa, pois o comando RTDB ainda foi registrado.
+        }
+    }
+
+    console.log(`DEBUG: Resposta de sucesso enviada para /alexa-biometria-trigger.`);
+    res.status(200).send(`✅ Comando '${portao}' enviado para o Firebase e FCM para processamento biométrico do usuário '${usuario}'.`);
 
   } catch (error) {
-    console.error(`❌ Erro ao enviar comando para o Firebase para o portão '${portao}' do usuário '${usuario}':`, error);
-    res.status(500).send('❌ Erro interno ao processar comando da Alexa via Firebase.');
+    console.error(`❌ Erro geral no processamento de /alexa-biometria-trigger para o portão '${portao}' do usuário '${usuario}':`, error);
+    res.status(500).send(`❌ Erro interno ao processar comando da Alexa: ${error.message || 'Erro desconhecido'}`);
   }
 });
+
+// ... (Restante do seu server.js) ...
 
 
 // -------- ROTAS ANTIGAS: GARAGEMVIP E CATCH-ALL (:ALIAS) - MANTIDAS PARA O FLUXO "COM SENHA" --------
