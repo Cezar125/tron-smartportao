@@ -73,6 +73,17 @@ function fireHttpsGet(url, callback) {
     console.error('Erro ao chamar fireHttpsGet:', err);
   }
 }
+// ... (seu código antes de app.get('/')) ...
+
+// ================== ROTA DE TESTE DE LOGS ==================
+app.get('/testar-logs', (req, res) => {
+  console.log('##############################################');
+  console.log('## TESTE DE LOGS: Rota /testar-logs foi acessada! ##');
+  console.log('##############################################');
+  res.status(200).send('Rota de teste de logs acessada com sucesso!');
+});
+
+// ... (o restante do seu server.js) ...
 
 // ================== ROTAS ==================
 app.get('/', (req, res) => res.redirect('/login'));
