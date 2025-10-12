@@ -385,6 +385,8 @@ app.post('/excluir-usuario', async (req,res)=>{
 
 // ================== NOVA ROTA: ACIONAR COMANDO VIA FIREBASE (PARA BIOMETRIA) ==================
 // Esta rota deve ser chamada pela sua Alexa Skill quando a opção "com biometria" for escolhida.
+// ... (seu código existente antes desta rota) ...
+
 app.post('/alexa-biometria-trigger', async (req, res) => {
   // --- INÍCIO DOS LOGS DE DEBUG ---
   console.log('####################################################');
@@ -411,8 +413,7 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
       return res.status(404).send(`❌ Usuário "${usuario}" não encontrado no MongoDB.`);
     }
 
-    // --- 1. Escrever o comando no Realtime Database (como já faz) ---
-    // Seu app Android vai "escutar" nesse nó ou ser acordado para lê-lo.
+    // --- 1. Escrever o comando no Realtime Database ---
     const comandoRef = db.ref(`/comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
     await comandoRef.set({
       acao: 'abrir',
@@ -423,55 +424,20 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
     });
     console.log(`✅ Comando RTDB registrado: /comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
 
-
-    // --- 2. Obter FCM Token do Firebase Realtime Database (NOVO) ---
-    const fcmTokenRef = db.ref(`/tokens/${usuarioNormalizado}`);
-    const fcmTokenSnapshot = await fcmTokenRef.once('value'); // Lê o token UMA VEZ
-    const fcmToken = fcmTokenSnapshot.val(); // Obtém o valor do token
-    console.log(`DEBUG: FCM Token recuperado do RTDB para ${usuarioNormalizado}: ${fcmToken ? 'ENCONTRADO' : 'NÃO ENCONTRADO'}`);
-
-    if (!fcmToken) {
-        console.warn(`⚠️ Usuário ${usuarioNormalizado} não tem FCM Token registrado no Firebase RTDB. Não é possível enviar notificação push.`);
-        // A Alexa ainda pode responder com sucesso, pois o comando está no RTDB e o app pode pegá-lo se já estiver aberto.
-    } else {
-        const message = {
-            token: fcmToken, // Usa o token obtido do RTDB
-            data: { // Dados que seu app Android receberá no onMessageReceived
-                userId: usuarioNormalizado,
-                portaoAlias: portaoNormalizado,
-                tipoComando: 'abrirComBiometria', // Tipo de comando para seu app saber o que fazer
-            },
-            notification: { // Esta parte opcional exibe uma notificação na barra de status
-                title: 'TRON Smart Portão',
-                body: `Confirme para abrir o portão ${portaoNormalizado}.`
-            },
-            android: { // Configurações específicas para Android
-                priority: 'high'
-            },
-            apns: { // Configurações específicas para iOS (se você tivesse um app iOS)
-                headers: {
-                    'apns-priority': '10', // Prioridade alta
-                },
-            },
-        };
-
-        try {
-            const response = await admin.messaging().send(message);
-            console.log(`✅ Mensagem FCM enviada com sucesso para ${usuarioNormalizado} (${portaoNormalizado}):`, response);
-        } catch (fcmError) {
-            console.error(`❌ Erro ao enviar FCM para ${usuarioNormalizado} (${portaoNormalizado}):`, fcmError);
-            // Loga o erro, mas não necessariamente falha a requisição da Alexa, pois o comando RTDB ainda foi registrado.
-        }
-    }
+    // --- 2. FCM Token e Envio de Mensagem FCM - DESABILITADO PARA USAR FOREGROUND SERVICE ---
+    // Comentamos toda a lógica de FCM aqui, pois o Foreground Service irá "escutar" o RTDB.
+    console.log(`DEBUG: Envio de FCM desabilitado para este fluxo. Foreground Service irá monitorar o RTDB.`);
 
     console.log(`DEBUG: Resposta de sucesso enviada para /alexa-biometria-trigger.`);
-    res.status(200).send(`✅ Comando '${portao}' enviado para o Firebase e FCM para processamento biométrico do usuário '${usuario}'.`);
+    res.status(200).send(`✅ Comando '${portao}' enviado para o Firebase (monitorado pelo Foreground Service) do usuário '${usuario}'.`);
 
   } catch (error) {
     console.error(`❌ Erro geral no processamento de /alexa-biometria-trigger para o portão '${portao}' do usuário '${usuario}':`, error);
     res.status(500).send(`❌ Erro interno ao processar comando da Alexa: ${error.message || 'Erro desconhecido'}`);
   }
 });
+
+// ... (Restante do seu server.js) ...
 
 // ... (Restante do seu server.js) ...
 
