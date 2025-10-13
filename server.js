@@ -382,13 +382,6 @@ app.post('/excluir-usuario', async (req,res)=>{
 });
 
 // ... (seu código existente antes desta rota) ...
-
-// ================== NOVA ROTA: ACIONAR COMANDO VIA FIREBASE (PARA BIOMETRIA) ==================
-// Esta rota deve ser chamada pela sua Alexa Skill quando a opção "com biometria" for escolhida.
-// ... (seu código existente antes desta rota) ...
-
-// ... (seu código existente antes desta rota) ...
-
 // ================== NOVA ROTA: ACIONAR COMANDO VIA FIREBASE (PARA BIOMETRIA) ==================
 // Esta rota deve ser chamada pela sua Alexa Skill quando a opção "com biometria" for escolhida.
 app.post('/alexa-biometria-trigger', async (req, res) => {
@@ -418,12 +411,11 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
     }
 
     // --- 1. Escrever o comando no Realtime Database (como já faz) ---
-    // Seu app Android vai "escutar" nesse nó ou ser acordado para lê-lo.
     const comandoRef = db.ref(`/comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
     await comandoRef.set({
       acao: 'abrir',
       solicitante: 'alexa',
-      usuario: usuarioNormalizado, // Garante que o usuario está no comando RTDB
+      usuario: usuarioNormalizado,
       timestamp: admin.database.ServerValue.TIMESTAMP,
       status: 'pendente'
     });
@@ -432,41 +424,45 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
 
     // --- 2. Obter FCM Token do Firebase Realtime Database (NOVO) ---
     const fcmTokenRef = db.ref(`/tokens/${usuarioNormalizado}`);
-    const fcmTokenSnapshot = await fcmTokenRef.once('value'); // Lê o token UMA VEZ
-    const fcmToken = fcmTokenSnapshot.val(); // Obtém o valor do token
+    const fcmTokenSnapshot = await fcmTokenRef.once('value');
+    const fcmToken = fcmTokenSnapshot.val();
     console.log(`DEBUG: FCM Token recuperado do RTDB para ${usuarioNormalizado}: ${fcmToken ? 'ENCONTRADO' : 'NÃO ENCONTRADO'}`);
 
     if (!fcmToken) {
         console.warn(`⚠️ Usuário ${usuarioNormalizado} não tem FCM Token registrado no Firebase RTDB. Não é possível enviar notificação push.`);
-        // A Alexa ainda pode responder com sucesso, pois o comando está no RTDB e o app pode pegá-lo se já estiver aberto.
     } else {
+        // === INÍCIO DO OBJETO 'message' MODIFICADO ===
         const message = {
-            token: fcmToken, // Usa o token obtido do RTDB
-            data: { // Dados que seu app Android receberá no onMessageReceived
+            token: fcmToken,
+            data: { // ESTE É O PAYLOAD DATA. Ele SEMPRE chamará onMessageReceived.
                 userId: usuarioNormalizado,
                 portaoAlias: portaoNormalizado,
-                tipoComando: 'abrirComBiometria', // Tipo de comando para seu app saber o que fazer
+                tipoComando: 'abrirComBiometria',
+                // Adicione estes campos ao payload 'data' para seu app Android
+                custom_notification_title: 'TRON Smart Portão',
+                custom_notification_body: `Toque para confirmar e abrir o portão ${portaoNormalizado}.`
             },
-            notification: { // Esta parte opcional exibe uma notificação na barra de status
-                title: 'TRON Smart Portão',
-                body: `Confirme para abrir o portão ${portaoNormalizado}.`
-            },
-            android: { // Configurações específicas para Android
+            // === IMPORTANTE: REMOVA COMPLETAMENTE O BLOCO 'notification' AQUI ===
+            // notification: { // ESTE BLOCO FOI REMOVIDO PARA FORÇAR SEU onMessageReceived A SER CHAMADO
+            //     title: 'TRON Smart Portão',
+            //     body: `Confirme para abrir o portão ${portaoNormalizado}.`
+            // },
+            android: {
                 priority: 'high'
             },
-            apns: { // Configurações específicas para iOS (se você tivesse um app iOS)
+            apns: {
                 headers: {
-                    'apns-priority': '10', // Prioridade alta
+                    'apns-priority': '10',
                 },
             },
         };
+        // === FIM DO OBJETO 'message' MODIFICADO ===
 
         try {
             const response = await admin.messaging().send(message);
             console.log(`✅ Mensagem FCM enviada com sucesso para ${usuarioNormalizado} (${portaoNormalizado}):`, response);
         } catch (fcmError) {
             console.error(`❌ Erro ao enviar FCM para ${usuarioNormalizado} (${portaoNormalizado}):`, fcmError);
-            // Loga o erro, mas não necessariamente falha a requisição da Alexa, pois o comando RTDB ainda foi registrado.
         }
     }
 
@@ -478,6 +474,7 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
     res.status(500).send(`❌ Erro interno ao processar comando da Alexa: ${error.message || 'Erro desconhecido'}`);
   }
 });
+
 
 // ... (Restante do seu server.js) ...
 
