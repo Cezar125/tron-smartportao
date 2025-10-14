@@ -381,18 +381,13 @@ app.post('/excluir-usuario', async (req,res)=>{
   res.redirect('/excluir-usuario');
 });
 
-// ... (seu código existente antes desta rota) ...
-// ================== NOVA ROTA: ACIONAR COMANDO VIA FIREBASE (PARA BIOMETRIA) ==================
-// Esta rota deve ser chamada pela sua Alexa Skill quando a opção "com biometria" for escolhida.
 // ================== NOVA ROTA: ACIONAR COMANDO VIA FIREBASE (PARA BIOMETRIA) ==================
 // Esta rota deve ser chamada pela sua Alexa Skill quando a opção "com biometria" for escolhida.
 app.post('/alexa-biometria-trigger', async (req, res) => {
-  // --- INÍCIO DOS LOGS DE DEBUG ---
   console.log('####################################################');
-  console.log('## DEBUG: REQUISICAO RECEBIDA EM /alexa-biometria-trigger ##');
+  console.log('## DEBUG: REQUISIÇÃO RECEBIDA EM /alexa-biometria-trigger ##');
   console.log(`DEBUG: Método: ${req.method}. Corpo: ${JSON.stringify(req.body)}`);
   console.log('####################################################');
-  // --- FIM DOS LOGS DE DEBUG ---
 
   const { portao, usuario } = req.body;
 
@@ -405,14 +400,14 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
   const usuarioNormalizado = normalizar(usuario);
 
   try {
-    // Busca o usuário no MongoDB para garantir que ele existe e pode acionar aliases
+    // --- Verifica se o usuário existe no MongoDB ---
     const usuarioMongo = await Usuario.findOne({ nome: usuarioNormalizado });
     if (!usuarioMongo) {
       console.error(`DEBUG: Usuário "${usuario}" não encontrado no MongoDB.`);
       return res.status(404).send(`❌ Usuário "${usuario}" não encontrado no MongoDB.`);
     }
 
-    // --- 1. Escrever o comando no Realtime Database (como já faz) ---
+    // --- 1. Escreve o comando no Realtime Database ---
     const comandoRef = db.ref(`/comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
     await comandoRef.set({
       acao: 'abrir',
@@ -423,78 +418,71 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
     });
     console.log(`✅ Comando RTDB registrado: /comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
 
-
-    // <<<<<<<<<<<<<<<< MODIFICAÇÃO CHAVE AQUI (PARA MÚLTIPLOS TOKENS E MULTICAST) >>>>>>>>>>>>>>>>>>
-    // --- 2. Obter TODOS os FCM Tokens do Firebase Realtime Database ---
+    // --- 2. Obter TODOS os FCM Tokens do usuário ---
     const fcmTokensRef = db.ref(`/tokens/${usuarioNormalizado}`);
-    const fcmTokensSnapshot = await fcmTokensRef.once('value');
-    const fcmTokensObject = fcmTokensSnapshot.val(); // Deve ser um objeto {token1: true, token2: true, ...}
+    const snapshot = await fcmTokensRef.once('value');
 
-    let registrationTokens = [];
-    if (fcmTokensObject) {
-        registrationTokens = Object.keys(fcmTokensObject); // Extrai as chaves (tokens) do objeto
+    if (!snapshot.exists()) {
+      console.warn(`⚠️ Nenhum token encontrado para o usuário ${usuarioNormalizado}.`);
+      return res.status(200).send(`✅ Comando salvo no Firebase, mas nenhum dispositivo com token para ${usuario}.`);
     }
-    
-    console.log(`DEBUG: Total de FCM Tokens recuperados para ${usuarioNormalizado}: ${registrationTokens.length}`);
+
+    const tokensObj = snapshot.val();
+    const registrationTokens = Object.keys(tokensObj || {});
+
+    console.log(`📱 Tokens recuperados para ${usuarioNormalizado}:`, registrationTokens);
 
     if (registrationTokens.length === 0) {
-        console.warn(`⚠️ Usuário ${usuarioNormalizado} não tem FCM Tokens registrados no Firebase RTDB. Não é possível enviar notificação push.`);
-        // A Alexa ainda pode responder com sucesso, pois o comando está no RTDB e o app pode pegá-lo se já estiver aberto.
-    } else {
-        // Objeto de dados para a mensagem FCM (apenas data, sem notification payload)
-        const message = {
-            data: { // APENAS O PAYLOAD DATA - NUNCA ENVIE notification E data juntos se o app estiver em background!
-                userId: usuarioNormalizado,
-                portaoAlias: portaoNormalizado,
-                tipoComando: 'abrirComBiometria',
-                custom_notification_title: 'TRON Smart Portão',
-                custom_notification_body: `Toque para confirmar e abrir o portão ${portaoNormalizado}.`
-            },
-            android: { // Configurações específicas para Android
-                priority: 'high'
-            },
-            apns: { // Configurações específicas para iOS (se você tivesse um app iOS)
-                headers: {
-                    'apns-priority': '10', // Prioridade alta
-                },
-            },
-        };
-
-        try {
-            // ENVIAR MENSAGEM MULTICAST para todos os tokens
-            const response = await admin.messaging().sendEachForMulticast({
-                tokens: registrationTokens, // Lista de tokens
-                ...message // Mesma estrutura de mensagem (data, android, apns), mas sem o 'token' individual
-            });
-            console.log(`✅ Mensagens FCM enviadas para ${response.successCount} dispositivos de ${usuarioNormalizado}. Falhas: ${response.failureCount}`);
-
-            if (response.failureCount > 0) {
-                response.responses.forEach((resp, index) => {
-                    if (!resp.success) {
-                        console.error(`❌ Falha ao enviar FCM para token ${registrationTokens[index]}: ${resp.error?.message}`);
-                        // Opcional: Remover tokens inválidos do RTDB para evitar futuras tentativas
-                        if (resp.error?.code === 'messaging/registration-token-not-registered' ||
-                            resp.error?.code === 'messaging/invalid-registration-token') {
-                             db.ref(`/tokens/${usuarioNormalizado}/${registrationTokens[index]}`).remove();
-                             console.log(`Token inválido ${registrationTokens[index]} removido do RTDB.`);
-                        }
-                    }
-                });
-            }
-
-        } catch (fcmError) {
-            console.error(`❌ Erro geral ao enviar FCM para ${usuarioNormalizado} (${portaoNormalizado}):`, fcmError);
-            // Loga o erro, mas não necessariamente falha a requisição da Alexa, pois o comando RTDB ainda foi registrado.
-        }
+      console.warn(`⚠️ Usuário ${usuarioNormalizado} não possui tokens válidos.`);
+      return res.status(200).send(`✅ Comando salvo, mas sem tokens válidos para ${usuario}.`);
     }
-    // <<<<<<<<<<<<<<<< FIM DA MODIFICAÇÃO CHAVE >>>>>>>>>>>>>>>>>>
 
-    console.log(`DEBUG: Resposta de sucesso enviada para /alexa-biometria-trigger.`);
-    res.status(200).send(`✅ Comando '${portao}' enviado para o Firebase e FCM para processamento biométrico do usuário '${usuario}'.`);
+    // --- 3. Monta a mensagem FCM ---
+    const message = {
+      data: {
+        userId: usuarioNormalizado,
+        portaoAlias: portaoNormalizado,
+        tipoComando: 'abrirComBiometria',
+        custom_notification_title: 'TRON Smart Portão',
+        custom_notification_body: `Toque para confirmar e abrir o portão ${portaoNormalizado}.`
+      },
+      android: {
+        priority: 'high'
+      },
+      apns: {
+        headers: { 'apns-priority': '10' }
+      }
+    };
 
-  } catch (error) {
-    console.error(`❌ Erro geral no processamento de /alexa-biometria-trigger para o portão '${portao}' do usuário '${usuario}':`, error);
-    res.status(500).send(`❌ Erro interno ao processar comando da Alexa: ${error.message || 'Erro desconhecido'}`);
+    // --- 4. Envia para TODOS os dispositivos desse usuário ---
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens: registrationTokens,
+      ...message
+    });
+
+    console.log(`✅ Envio FCM para ${usuarioNormalizado}: ${response.successCount} sucesso(s), ${response.failureCount} falha(s).`);
+
+    // --- 5. Remove tokens inválidos automaticamente ---
+    if (response.failureCount > 0) {
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          const errCode = resp.error?.code;
+          const tokenInvalido = registrationTokens[idx];
+          console.error(`❌ Falha no token ${tokenInvalido}: ${errCode}`);
+
+          if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(errCode)) {
+            db.ref(`/tokens/${usuarioNormalizado}/${tokenInvalido}`).remove();
+            console.log(`🗑️ Token inválido removido: ${tokenInvalido}`);
+          }
+        }
+      });
+    }
+
+    res.status(200).send(`✅ Comando '${portao}' enviado para ${usuario}. ${response.successCount} dispositivo(s) notificado(s).`);
+
+  } catch (err) {
+    console.error(`❌ Erro em /alexa-biometria-trigger (${usuario}/${portao}):`, err);
+    res.status(500).send(`❌ Erro interno: ${err.message || 'Erro desconhecido'}`);
   }
 });
 
