@@ -4,85 +4,77 @@ import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import https from 'https';
 import dotenv from 'dotenv';
-import admin from 'firebase-admin'; // Adicione este import
+import admin from 'firebase-admin';
 
-dotenv.config(); // Carrega variáveis do .env
+dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
 
 // ================== CONFIGURAÇÃO FIREBASE ADMIN SDK ==================
-// IMPORTANTE: O conteúdo do seu arquivo serviceAccountKey.json deve ser
-// armazenado como uma variável de ambiente (ex: FIREBASE_SERVICE_ACCOUNT_KEY)
-// no seu ambiente de deploy (OnRender). NUNCA exponha este arquivo publicamente.
 try {
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://trontoken-93556-default-rtdb.firebaseio.com" // Sua URL do Realtime Database
-  });
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: "https://trontoken-93556-default-rtdb.firebaseio.com"
+  });
 
-  console.log('✅ Firebase Admin SDK inicializado com sucesso.');
+  console.log('✅ Firebase Admin SDK inicializado com sucesso.');
 } catch (error) {
-  console.error('❌ Erro ao inicializar Firebase Admin SDK. Verifique FIREBASE_SERVICE_ACCOUNT_KEY:', error);
-  process.exit(1); // <--- ATUALIZADO: Sai se o Firebase Admin não iniciar
+  console.error('❌ Erro ao inicializar Firebase Admin SDK. Verifique FIREBASE_SERVICE_ACCOUNT_KEY:', error);
+  process.exit(1);
 }
-const db = admin.database(); // Referência ao Realtime Database
+const db = admin.database();
 
 // ================== CONFIGURAÇÃO MONGODB ==================
 const mongoUri = process.env.MONGODB_URI;
 
 mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('✅ Conectado ao MongoDB Atlas'))
-  .catch(err => console.error('❌ Erro MongoDB:', err));
+  .then(() => console.log('✅ Conectado ao MongoDB Atlas'))
+  .catch(err => console.error('❌ Erro MongoDB:', err));
 
 const usuarioSchema = new mongoose.Schema({
-  nome: String,
-  senha: String,
-  pergunta: String,
-  resposta: String,
-  aliases: { type: Map, of: String }
+  nome: String,
+  senha: String,
+  pergunta: String,
+  resposta: String,
+  aliases: { type: Map, of: String }
 });
 
 const Usuario = mongoose.model('Usuario', usuarioSchema);
 
 // ================== FUNÇÃO DE NORMALIZAÇÃO ==================
 const normalizar = (texto = '') => {
-  return String(texto)
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "");
+  return String(texto)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "");
 };
 
 // ================== MIDDLEWARES ==================
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(session({
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: true
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: true
 }));
 
-// ================== FUNÇÃO FIRE HTTPS ==================
+// ================== FUNÇÃO FIRE HTTPS (CORRIGIDA) ==================
+// Retorna a requisição para permitir encadeamento seguro de '.on('error', ...)'
 function fireHttpsGet(url, callback) {
-  try {
-    https.get(url, callback).on('error', err => console.error('Erro na requisição HTTPS:', err));
-  } catch (err) {
-    console.error('Erro ao chamar fireHttpsGet:', err);
-  }
+  // CORREÇÃO: Apenas retorna o objeto ClientRequest do https.get
+  return https.get(url, callback);
 }
-// ... (seu código antes de app.get('/')) ...
-
-
 
 // ================== ROTAS ==================
 app.get('/', (req, res) => res.redirect('/login'));
 
 // -------- LOGIN --------
 app.get('/login', (req, res) => {
-  res.send(`
+  res.send(`
 <html>
 <head>
 <style>
@@ -109,30 +101,30 @@ h1,h2,h3 { text-shadow:0 0 10px #00FFFF;}
 <p><a href="/recuperar">Esqueci minha senha</a></p>
 </body>
 </html>
-  `);
+  `);
 });
 
 app.post('/login', async (req, res) => {
-  let { usuario, senha } = req.body;
-  usuario = normalizar(usuario);
+  let { usuario, senha } = req.body;
+  usuario = normalizar(usuario);
 
-  const u = await Usuario.findOne({ nome: usuario });
-  if (!u || !(await bcrypt.compare(senha, u.senha))) {
-    return res.send(`
+  const u = await Usuario.findOne({ nome: usuario });
+  if (!u || !(await bcrypt.compare(senha, u.senha))) {
+    return res.send(`
 <html><body style="background:#0A0A0A;color:#FF0000;font-family:'Orbitron',sans-serif;text-align:center;padding-top:100px;">
 <h1 style="text-shadow:0 0 10px #FF0000;">Usuário ou senha inválidos.</h1>
 <a href="/login" style="color:#FF1493;text-decoration:none;font-size:18px;border:1px solid #FF1493;padding:10px 20px;box-shadow:0 0 10px #FF1493;background-color:#000;">Voltar</a>
 </body></html>
-    `);
-  }
+    `);
+  }
 
-  req.session.usuario = usuario;
-  res.redirect('/painel');
+  req.session.usuario = usuario;
+  res.redirect('/painel');
 });
 
 // -------- REGISTRO --------
 app.get('/registrar', (req, res) => {
-  res.send(`
+  res.send(`
 <html>
 <head>
 <style>
@@ -163,28 +155,28 @@ h1,h2,h3 { text-shadow:0 0 10px #00FFFF;}
 <p><a href="/login">Já tenho conta</a></p>
 </body>
 </html>
-  `);
+  `);
 });
 
 app.post('/registrar', async (req, res) => {
-  let { usuario, senha, confirmar, pergunta, resposta } = req.body;
-  usuario = normalizar(usuario);
+  let { usuario, senha, confirmar, pergunta, resposta } = req.body;
+  usuario = normalizar(usuario);
 
-  if (senha !== confirmar) return res.send('❌ As senhas não coincidem. <a href="/registrar">Voltar</a>');
+  if (senha !== confirmar) return res.send('❌ As senhas não coincidem. <a href="/registrar">Voltar</a>');
 
-  const existente = await Usuario.findOne({ nome: usuario });
-  if (existente) return res.send('❌ Usuário já existe. <a href="/registrar">Voltar</a>');
+  const existente = await Usuario.findOne({ nome: usuario });
+  if (existente) return res.send('❌ Usuário já existe. <a href="/registrar">Voltar</a>');
 
-  const hashSenha = await bcrypt.hash(senha, 10);
-  const novo = new Usuario({ nome: usuario, senha: hashSenha, pergunta, resposta, aliases: {} });
-  await novo.save();
+  const hashSenha = await bcrypt.hash(senha, 10);
+  const novo = new Usuario({ nome: usuario, senha: hashSenha, pergunta, resposta, aliases: {} });
+  await novo.save();
 
-  res.redirect('/cadastro-sucesso');
+  res.redirect('/cadastro-sucesso');
 });
 
 // -------- CADASTRO SUCESSO --------
 app.get('/cadastro-sucesso', (req, res) => {
-  res.send(`
+  res.send(`
 <html>
 <head>
 <title>Cadastro Realizado</title>
@@ -201,12 +193,12 @@ a:hover { box-shadow:0 0 20px #00FFFF,0 0 30px #00FFFF; transform:scale(1.05);}
 <a href="/login">🔙 Voltar ao login</a>
 </body>
 </html>
-  `);
+  `);
 });
 
 // -------- RECUPERAR SENHA --------
 app.get('/recuperar', (req,res)=>{
-  res.send(`
+  res.send(`
 <html>
 <head>
 <style>
@@ -229,21 +221,21 @@ button{background:#000;color:#FF1493;border:1px solid #FF1493;box-shadow:0 0 10p
 <a href="/login" style="display:inline-block;margin-top:20px;background:#000;color:#00FFFF;border:1px solid #00FFFF;padding:10px 20px;text-decoration:none;box-shadow:0 0 10px #00FFFF;">🔙 Voltar ao login</a>
 </body>
 </html>
-  `);
+  `);
 });
 
 app.post('/recuperar', async (req,res)=>{
-  let { usuario, resposta, nova } = req.body;
-  usuario = normalizar(usuario);
+  let { usuario, resposta, nova } = req.body;
+  usuario = normalizar(usuario);
 
-  const u = await Usuario.findOne({ nome: usuario });
-  if(!u) return res.send('❌ Usuário não encontrado. <a href="/recuperar">Tentar novamente</a>');
-  if(!u.resposta || u.resposta.toLowerCase().trim() !== String(resposta).toLowerCase().trim())
-    return res.send('❌ Resposta secreta incorreta. <a href="/recuperar">Tentar novamente</a>');
+  const u = await Usuario.findOne({ nome: usuario });
+  if(!u) return res.send('❌ Usuário não encontrado. <a href="/recuperar">Tentar novamente</a>');
+  if(!u.resposta || u.resposta.toLowerCase().trim() !== String(resposta).toLowerCase().trim())
+    return res.send('❌ Resposta secreta incorreta. <a href="/recuperar">Tentar novamente</a>');
 
-  u.senha = await bcrypt.hash(nova,10);
-  await u.save();
-  res.send('✅ Senha redefinida com sucesso. <a href="/login">Ir para login</a>');
+  u.senha = await bcrypt.hash(nova,10);
+  await u.save();
+  res.send('✅ Senha redefinida com sucesso. <a href="/login">Ir para login</a>');
 });
 
 // -------- LOGOUT --------
@@ -251,36 +243,36 @@ app.get('/logout', (req,res)=>{ req.session.destroy(()=>res.redirect('/login')) 
 
 // -------- PAINEL --------
 app.get('/painel', async (req,res)=>{
-  const usuario = req.session.usuario;
-  if(!usuario) return res.redirect('/login');
+  const usuario = req.session.usuario;
+  if(!usuario) return res.redirect('/login');
 
-  const u = await Usuario.findOne({ nome: usuario });
-  const aliases = u.aliases || new Map();
-  let lista = '';
-  for(const [alias,url] of aliases) {
-    lista += `<li><strong>${alias}</strong><br>
-    <div style="position:relative; overflow-x:auto; white-space:nowrap; padding:10px; background-color:#1F1F1F; border:1px solid #8A2BE2; box-shadow:0 0 10px #8A2BE2; margin-top:5px;">
-      <span style="word-break:break-all; color:#39FF14;">${url}</span>
-      <button onclick="navigator.clipboard.writeText('${url}');
-        const msg=document.createElement('span');
-        msg.textContent='✅ Copiado!';
-        msg.style='position:absolute; top:5px; left:5px; color:#00FFFF; font-size:12px; background-color:#000; padding:2px 6px; border:1px solid #00FFFF; box-shadow:0 0 5px #00FFFF;';
-        this.parentElement.appendChild(msg);
-        setTimeout(()=>msg.remove(),2000);"
-        style="position:absolute; top:5px; right:5px; background-color:#000; color:#FF1493; border:1px solid #FF1493; padding:5px; font-size:12px; cursor:pointer;">📋
-      </button>
-    </div>
-    <form method="POST" action="/excluir-alias" style="margin-top:10px;">
-      <input type="hidden" name="alias" value="${alias}">
-      <button type="submit">Excluir</button>
-    </form></li>`;
-  }
+  const u = await Usuario.findOne({ nome: usuario });
+  const aliases = u.aliases || new Map();
+  let lista = '';
+  for(const [alias,url] of aliases) {
+    lista += `<li><strong>${alias}</strong><br>
+    <div style="position:relative; overflow-x:auto; white-space:nowrap; padding:10px; background-color:#1F1F1F; border:1px solid #8A2BE2; box-shadow:0 0 10px #8A2BE2; margin-top:5px;">
+      <span style="word-break:break-all; color:#39FF14;">${url}</span>
+      <button onclick="navigator.clipboard.writeText('${url}');
+        const msg=document.createElement('span');
+        msg.textContent='✅ Copiado!';
+        msg.style='position:absolute; top:5px; left:5px; color:#00FFFF; font-size:12px; background-color:#000; padding:2px 6px; border:1px solid #00FFFF; box-shadow:0 0 5px #00FFFF;';
+        this.parentElement.appendChild(msg);
+        setTimeout(()=>msg.remove(),2000);"
+        style="position:absolute; top:5px; right:5px; background-color:#000; color:#FF1493; border:1px solid #FF1493; padding:5px; font-size:12px; cursor:pointer;">📋
+      </button>
+    </div>
+    <form method="POST" action="/excluir-alias" style="margin-top:10px;">
+      <input type="hidden" name="alias" value="${alias}">
+      <button type="submit">Excluir</button>
+    </form></li>`;
+  }
 
-  const adminPanel = usuario==='admin' ? `<h3>Usuários cadastrados</h3>
-    <ul>${(await Usuario.find()).map(u=>`<li>${u.nome}</li>`).join('')}</ul>
-    <p><a href="/excluir-usuario">🛠️ Administração</a></p>` : '';
+  const adminPanel = usuario==='admin' ? `<h3>Usuários cadastrados</h3>
+    <ul>${(await Usuario.find()).map(u=>`<li>${u.nome}</li>`).join('')}</ul>
+    <p><a href="/excluir-usuario">🛠️ Administração</a></p>` : '';
 
-  res.send(`
+  res.send(`
 <html>
 <head>
 <style>
@@ -309,49 +301,49 @@ ${adminPanel}
 </form>
 </body>
 </html>
-  `);
+  `);
 });
 
 // -------- CADASTRAR ALIAS --------
 app.post('/cadastrar-alias', async (req,res)=>{
-  const usuario = req.session.usuario;
-  if(!usuario) return res.redirect('/login');
+  const usuario = req.session.usuario;
+  if(!usuario) return res.redirect('/login');
 
-  let { alias, url } = req.body;
-  alias = normalizar(alias);
+  let { alias, url } = req.body;
+  alias = normalizar(alias);
 
-  const u = await Usuario.findOne({ nome: usuario });
-  if(!u.aliases) u.aliases = new Map();
-  if(u.aliases.has(alias)) return res.send('❌ Esse alias já existe. <a href="/painel">Voltar</a>');
+  const u = await Usuario.findOne({ nome: usuario });
+  if(!u.aliases) u.aliases = new Map();
+  if(u.aliases.has(alias)) return res.send('❌ Esse alias já existe. <a href="/painel">Voltar</a>');
 
-  u.aliases.set(alias,url);
-  await u.save();
-  res.redirect('/painel');
+  u.aliases.set(alias,url);
+  await u.save();
+  res.redirect('/painel');
 });
 
 // -------- EXCLUIR ALIAS --------
 app.post('/excluir-alias', async (req,res)=>{
-  const usuario = req.session.usuario;
-  if(!usuario) return res.redirect('/login');
+  const usuario = req.session.usuario;
+  if(!usuario) return res.redirect('/login');
 
-  let { alias } = req.body;
-  alias = normalizar(alias);
+  let { alias } = req.body;
+  alias = normalizar(alias);
 
-  const u = await Usuario.findOne({ nome: usuario });
-  if(u.aliases.has(alias)) { u.aliases.delete(alias); await u.save(); }
-  res.redirect('/painel');
+  const u = await Usuario.findOne({ nome: usuario });
+  if(u.aliases.has(alias)) { u.aliases.delete(alias); await u.save(); }
+  res.redirect('/painel');
 });
 
 // -------- ADMIN EXCLUIR USUÁRIOS --------
 app.get('/excluir-usuario', async (req,res)=>{
-  if(req.session.usuario !== 'admin') return res.redirect('/login');
+  if(req.session.usuario !== 'admin') return res.redirect('/login');
 
-  const lista = (await Usuario.find()).map(u=>`<li><strong>${u.nome}</strong>
-  <form method="POST" action="/excluir-usuario" style="display:inline;">
-  <input type="hidden" name="usuario" value="${u.nome}">
-  <button type="submit">🗑️ Excluir</button></form></li>`).join('');
+  const lista = (await Usuario.find()).map(u=>`<li><strong>${u.nome}</strong>
+  <form method="POST" action="/excluir-usuario" style="display:inline;">
+  <input type="hidden" name="usuario" value="${u.nome}">
+  <button type="submit">🗑️ Excluir</button></form></li>`).join('');
 
-  res.send(`
+  res.send(`
 <html>
 <head>
 <style>
@@ -371,190 +363,196 @@ a{color:#00FFFF;text-decoration:none;display:inline-block;margin-top:30px;}
 <a href="/painel">Voltar ao painel</a>
 </body>
 </html>
-  `);
+  `);
 });
 
 app.post('/excluir-usuario', async (req,res)=>{
-  if(req.session.usuario !== 'admin') return res.redirect('/login');
-  const { usuario } = req.body;
-  await Usuario.deleteOne({ nome: usuario });
-  res.redirect('/excluir-usuario');
+  if(req.session.usuario !== 'admin') return res.redirect('/login');
+  const { usuario } = req.body;
+  await Usuario.deleteOne({ nome: usuario });
+  res.redirect('/excluir-usuario');
 });
 
 // ================== NOVA ROTA: ACIONAR COMANDO VIA FIREBASE (PARA BIOMETRIA) ==================
-// Esta rota deve ser chamada pela sua Alexa Skill quando a opção "com biometria" for escolhida.
 app.post('/alexa-biometria-trigger', async (req, res) => {
-  console.log('####################################################');
-  console.log('## DEBUG: REQUISIÇÃO RECEBIDA EM /alexa-biometria-trigger ##');
-  console.log(`DEBUG: Método: ${req.method}. Corpo: ${JSON.stringify(req.body)}`);
-  console.log('####################################################');
+  console.log('####################################################');
+  console.log('## DEBUG: REQUISIÇÃO RECEBIDA EM /alexa-biometria-trigger ##');
+  console.log(`DEBUG: Método: ${req.method}. Corpo: ${JSON.stringify(req.body)}`);
+  console.log('####################################################');
 
-  const { portao, usuario } = req.body;
+  const { portao, usuario } = req.body;
 
-  if (!portao || !usuario) {
-    console.error('DEBUG: Erro de validação: Parâmetros "portao" e "usuario" são obrigatórios.');
-    return res.status(400).send('❌ Parâmetros "portao" e "usuario" são obrigatórios no corpo da requisição.');
-  }
+  if (!portao || !usuario) {
+    console.error('DEBUG: Erro de validação: Parâmetros "portao" e "usuario" são obrigatórios.');
+    return res.status(400).send('❌ Parâmetros "portao" e "usuario" são obrigatórios no corpo da requisição.');
+  }
 
-  const portaoNormalizado = normalizar(portao);
-  const usuarioNormalizado = normalizar(usuario);
+  const portaoNormalizado = normalizar(portao);
+  const usuarioNormalizado = normalizar(usuario);
 
-  try {
-    // --- Verifica se o usuário existe no MongoDB ---
-    const usuarioMongo = await Usuario.findOne({ nome: usuarioNormalizado });
-    if (!usuarioMongo) {
-      console.error(`DEBUG: Usuário "${usuario}" não encontrado no MongoDB.`);
-      return res.status(404).send(`❌ Usuário "${usuario}" não encontrado no MongoDB.`);
-    }
+  try {
+    // --- Verifica se o usuário existe no MongoDB ---
+    const usuarioMongo = await Usuario.findOne({ nome: usuarioNormalizado });
+    if (!usuarioMongo) {
+      console.error(`DEBUG: Usuário "${usuario}" não encontrado no MongoDB.`);
+      return res.status(404).send(`❌ Usuário "${usuario}" não encontrado no MongoDB.`);
+    }
 
-    // --- 1. Escreve o comando no Realtime Database ---
-    const comandoRef = db.ref(`/comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
-    await comandoRef.set({
-      acao: 'abrir',
-      solicitante: 'alexa',
-      usuario: usuarioNormalizado,
-      timestamp: admin.database.ServerValue.TIMESTAMP,
-      status: 'pendente'
-    });
-    console.log(`✅ Comando RTDB registrado: /comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
+    // --- 1. Escreve o comando no Realtime Database ---
+    const comandoRef = db.ref(`/comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
+    await comandoRef.set({
+      acao: 'abrir',
+      solicitante: 'alexa',
+      usuario: usuarioNormalizado,
+      timestamp: admin.database.ServerValue.TIMESTAMP,
+      status: 'pendente'
+    });
+    console.log(`✅ Comando RTDB registrado: /comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
 
-    // --- 2. Obter TODOS os FCM Tokens do usuário ---
-    const fcmTokensRef = db.ref(`/tokens/${usuarioNormalizado}`);
-    const snapshot = await fcmTokensRef.once('value');
+    // --- 2. Obter TODOS os FCM Tokens do usuário ---
+    const fcmTokensRef = db.ref(`/tokens/${usuarioNormalizado}`);
+    const snapshot = await fcmTokensRef.once('value');
 
-    if (!snapshot.exists()) {
-      console.warn(`⚠️ Nenhum token encontrado para o usuário ${usuarioNormalizado}.`);
-      return res.status(200).send(`✅ Comando salvo no Firebase, mas nenhum dispositivo com token para ${usuario}.`);
-    }
+    if (!snapshot.exists()) {
+      console.warn(`⚠️ Nenhum token encontrado para o usuário ${usuarioNormalizado}.`);
+      return res.status(200).send(`✅ Comando salvo no Firebase, mas nenhum dispositivo com token para ${usuario}.`);
+    }
 
-    const tokensObj = snapshot.val();
-    const registrationTokens = Object.keys(tokensObj || {});
+    const tokensObj = snapshot.val();
+    const registrationTokens = Object.keys(tokensObj || {});
 
-    console.log(`📱 Tokens recuperados para ${usuarioNormalizado}:`, registrationTokens);
+    console.log(`📱 Tokens recuperados para ${usuarioNormalizado}:`, registrationTokens);
 
-    if (registrationTokens.length === 0) {
-      console.warn(`⚠️ Usuário ${usuarioNormalizado} não possui tokens válidos.`);
-      return res.status(200).send(`✅ Comando salvo, mas sem tokens válidos para ${usuario}.`);
-    }
+    if (registrationTokens.length === 0) {
+      console.warn(`⚠️ Usuário ${usuarioNormalizado} não possui tokens válidos.`);
+      return res.status(200).send(`✅ Comando salvo, mas sem tokens válidos para ${usuario}.`);
+    }
 
-    // --- 3. Monta a mensagem FCM ---
-    const message = {
-      data: {
-        userId: usuarioNormalizado,
-        portaoAlias: portaoNormalizado,
-        tipoComando: 'abrirComBiometria',
-        custom_notification_title: 'TRON Smart Portão',
-        custom_notification_body: `Toque para confirmar e abrir o portão ${portaoNormalizado}.`
-      },
-      android: {
-        priority: 'high'
-      },
-      apns: {
-        headers: { 'apns-priority': '10' }
-      }
-    };
+    // --- 3. Monta a mensagem FCM ---
+    const message = {
+      data: {
+        userId: usuarioNormalizado,
+        portaoAlias: portaoNormalizado,
+        tipoComando: 'abrirComBiometria',
+        custom_notification_title: 'TRON Smart Portão',
+        custom_notification_body: `Toque para confirmar e abrir o portão ${portaoNormalizado}.`
+      },
+      android: {
+        priority: 'high'
+      },
+      apns: {
+        headers: { 'apns-priority': '10' }
+      }
+    };
 
-    // --- 4. Envia para TODOS os dispositivos desse usuário ---
-    const response = await admin.messaging().sendEachForMulticast({
-      tokens: registrationTokens,
-      ...message
-    });
+    // --- 4. Envia para TODOS os dispositivos desse usuário ---
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens: registrationTokens,
+      ...message
+    });
 
-    console.log(`✅ Envio FCM para ${usuarioNormalizado}: ${response.successCount} sucesso(s), ${response.failureCount} falha(s).`);
+    console.log(`✅ Envio FCM para ${usuarioNormalizado}: ${response.successCount} sucesso(s), ${response.failureCount} falha(s).`);
 
-    // --- 5. Remove tokens inválidos automaticamente ---
-    if (response.failureCount > 0) {
-      response.responses.forEach((resp, idx) => {
-        if (!resp.success) {
-          const errCode = resp.error?.code;
-          const tokenInvalido = registrationTokens[idx];
-          console.error(`❌ Falha no token ${tokenInvalido}: ${errCode}`);
+    // --- 5. Remove tokens inválidos automaticamente ---
+    if (response.failureCount > 0) {
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          const errCode = resp.error?.code;
+          const tokenInvalido = registrationTokens[idx];
+          console.error(`❌ Falha no token ${tokenInvalido}: ${errCode}`);
 
-          if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(errCode)) {
-            db.ref(`/tokens/${usuarioNormalizado}/${tokenInvalido}`).remove();
-            console.log(`🗑️ Token inválido removido: ${tokenInvalido}`);
-          }
-        }
-      });
-    }
+          if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(errCode)) {
+            db.ref(`/tokens/${usuarioNormalizado}/${tokenInvalido}`).remove();
+            console.log(`🗑️ Token inválido removido: ${tokenInvalido}`);
+          }
+        }
+      });
+    }
 
-    res.status(200).send(`✅ Comando '${portao}' enviado para ${usuario}. ${response.successCount} dispositivo(s) notificado(s).`);
+    res.status(200).send(`✅ Comando '${portao}' enviado para ${usuario}. ${response.successCount} dispositivo(s) notificado(s).`);
 
-  } catch (err) {
-    console.error(`❌ Erro em /alexa-biometria-trigger (${usuario}/${portao}):`, err);
-    res.status(500).send(`❌ Erro interno: ${err.message || 'Erro desconhecido'}`);
-  }
+  } catch (err) {
+    console.error(`❌ Erro em /alexa-biometria-trigger (${usuario}/${portao}):`, err);
+    res.status(500).send(`❌ Erro interno: ${err.message || 'Erro desconhecido'}`);
+  }
 });
 
-// ... (restante do seu server.js) ...
-
-
-
-// -------- ROTAS ANTIGAS: GARAGEMVIP E CATCH-ALL (:ALIAS) - MANTIDAS PARA O FLUXO "COM SENHA" --------
-// Essas rotas disparam a URL diretamente, sem biometria.
+// -------- ROTAS ANTIGAS: GARAGEMVIP (CORRIGIDA) --------
 app.get('/garagemvip', async (req, res) => {
-  try {
-    const uRaw = req.query.usuario || '';
-    const usuario = normalizar(uRaw);
-    const alias = 'garagemvip'; // Alias fixo para esta rota
+  try {
+    const uRaw = req.query.usuario || '';
+    const usuario = normalizar(uRaw);
+    const alias = 'garagemvip';
 
-    const u = await Usuario.findOne({ nome: usuario }).lean();
-    if (!u) return res.status(404).send(`❌ Usuário "${uRaw}" não encontrado.`);
+    const u = await Usuario.findOne({ nome: usuario }).lean();
+    if (!u) return res.status(404).send(`❌ Usuário "${uRaw}" não encontrado.`);
 
-    const url = u.aliases?.[alias];
-    if (!url) {
-      const disponiveis = Object.keys(u.aliases || {}).join(', ') || 'nenhum';
-      return res.status(404).send(`❌ Alias "${alias}" não encontrado para o usuário "${uRaw}". Aliases disponíveis: ${disponiveis}.`);
-    }
+    const url = u.aliases?.[alias];
+    if (!url) {
+      const disponiveis = Object.keys(u.aliases || {}).join(', ') || 'nenhum';
+      return res.status(404).send(`❌ Alias "${alias}" não encontrado para o usuário "${uRaw}". Aliases disponíveis: ${disponiveis}.`);
+    }
 
-    // DISPARO DIRETO DA URL (fluxo "com senha")
-    fireHttpsGet(url, response => { // Usando sua função fireHttpsGet
-      let data = '';
-      response.on('data', chunk => { data += chunk; });
-      response.on('end', () => {
-        res.send(`✅ Disparo enviado para "${alias}". Resposta: ${data}`);
-      });
-    }).on('error', err => {
-      console.error(err);
-      res.status(500).send('❌ Erro ao disparar a URL.');
-    });
+    // DISPARO DIRETO DA URL (fluxo "com senha")
+    fireHttpsGet(url, response => {
+      let data = '';
+      response.on('data', chunk => { data += chunk; });
+      response.on('end', () => {
+        if (!res.headersSent) { // CORREÇÃO: Previne ERR_HTTP_HEADERS_SENT
+          res.send(`✅ Disparo enviado para "${alias}". Resposta: ${data}`);
+        }
+      });
+    }).on('error', err => { // CORREÇÃO: Trata o erro da requisição de forma segura
+      if (!res.headersSent) {
+        console.error('Erro ao disparar a URL:', err.message);
+        res.status(500).send('❌ Erro ao disparar a URL.');
+      }
+    });
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('❌ Internal Server Error');
-  }
+  } catch (err) {
+    console.error('Erro em /garagemvip:', err);
+    if (!res.headersSent) { // CORREÇÃO: Previne ERR_HTTP_HEADERS_SENT
+      res.status(500).send('❌ Internal Server Error');
+    }
+  }
 });
 
-// Catch-all para qualquer outro alias (fluxo "com senha")
+// -------- CATCH-ALL PARA QUALQUER OUTRO ALIAS (CORRIGIDA) --------
 app.get('/:alias', async (req, res) => {
-  try {
-    const alias = normalizar(req.params.alias);
-    const usuario = normalizar(req.query.usuario || '');
+  try {
+    const alias = normalizar(req.params.alias);
+    const usuario = normalizar(req.query.usuario || '');
 
-    if (!usuario) return res.status(401).send('❌ Usuário não informado.');
+    if (!usuario) return res.status(401).send('❌ Usuário não informado.');
 
-    const u = await Usuario.findOne({ nome: usuario }).lean();
-    if (!u) return res.status(404).send(`❌ Usuário "${usuario}" não encontrado.`);
+    const u = await Usuario.findOne({ nome: usuario }).lean();
+    if (!u) return res.status(404).send(`❌ Usuário "${usuario}" não encontrado.`);
 
-    const url = u.aliases?.[alias];
-    if (!url) return res.status(404).send(`❌ Alias "${alias}" não encontrado para o usuário "${usuario}".`);
+    const url = u.aliases?.[alias];
+    if (!url) return res.status(404).send(`❌ Alias "${alias}" não encontrado para o usuário "${usuario}".`);
 
-    // DISPARO DIRETO DA URL (fluxo "com senha")
-    fireHttpsGet(url, response => { // Usando sua função fireHttpsGet
-      let data = '';
-      response.on('data', chunk => { data += chunk; });
-      response.on('end', () => {
-        res.send(`✅ Disparo enviado para "${alias}". Resposta: ${data}`);
-      });
-    }).on('error', err => {
-      console.error(err);
-      res.status(500).send('❌ Erro ao disparar a URL.');
-    });
+    // DISPARO DIRETO DA URL (fluxo "com senha")
+    fireHttpsGet(url, response => {
+      let data = '';
+      response.on('data', chunk => { data += chunk; });
+      response.on('end', () => {
+        if (!res.headersSent) { // CORREÇÃO: Previne ERR_HTTP_HEADERS_SENT
+          res.send(`✅ Disparo enviado para "${alias}". Resposta: ${data}`);
+        }
+      });
+    }).on('error', err => { // CORREÇÃO: Trata o erro da requisição de forma segura
+      if (!res.headersSent) {
+        console.error('Erro ao disparar a URL:', err.message);
+        res.status(500).send('❌ Erro ao disparar a URL.');
+      }
+    });
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('❌ Internal Server Error');
-  }
+  } catch (err) {
+    console.error('Erro em /:alias:', err);
+    if (!res.headersSent) { // CORREÇÃO: Previne ERR_HTTP_HEADERS_SENT
+      res.status(500).send('❌ Internal Server Error');
+    }
+  }
 });
 
 // ==================== INICIAR SERVIDOR ====================
