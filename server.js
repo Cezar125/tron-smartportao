@@ -139,7 +139,7 @@ h1,h2,h3 { text-shadow:0 0 10px #00FFFF;}
 <body>
 <h1 style="font-size:48px;">TRON</h1>
 <h2>Smart Portão</h2>
-<h3>Cadastro de Usuário</h3>
+<h3>Cadastro de Usuário Token</h3>
 <form method="POST" action="/registrar">
 <input type="text" name="usuario" required><br><br>
 <label>Senha:</label><br>
