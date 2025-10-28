@@ -1,5 +1,7 @@
 import express from 'express';
 import session from 'express-session';
+// 🛑 NOVO IMPORT: Módulo para armazenar sessões no MongoDB
+import connectMongoDBSession from 'connect-mongodb-session'; 
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import https from 'https';
@@ -11,19 +13,22 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 4000;
 
+// 🛑 INICIALIZA O MONGODB STORE
+const MongoDBStore = connectMongoDBSession(session); // Inicializa o construtor do Store
+
 // ================== CONFIGURAÇÃO FIREBASE ADMIN SDK ==================
 try {
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://trontoken-93556-default-rtdb.firebaseio.com"
-  });
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        databaseURL: "https://trontoken-93556-default-rtdb.firebaseio.com"
+    });
 
-  console.log('✅ Firebase Admin SDK inicializado com sucesso.');
+    console.log('✅ Firebase Admin SDK inicializado com sucesso.');
 } catch (error) {
-  console.error('❌ Erro ao inicializar Firebase Admin SDK. Verifique FIREBASE_SERVICE_ACCOUNT_KEY:', error);
-  process.exit(1);
+    console.error('❌ Erro ao inicializar Firebase Admin SDK. Verifique FIREBASE_SERVICE_ACCOUNT_KEY:', error);
+    process.exit(1);
 }
 const db = admin.database();
 
@@ -31,44 +36,66 @@ const db = admin.database();
 const mongoUri = process.env.MONGODB_URI;
 
 mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('✅ Conectado ao MongoDB Atlas'))
-  .catch(err => console.error('❌ Erro MongoDB:', err));
+    .then(() => console.log('✅ Conectado ao MongoDB Atlas'))
+    .catch(err => console.error('❌ Erro MongoDB:', err));
 
 const usuarioSchema = new mongoose.Schema({
-  nome: String,
-  senha: String,
-  pergunta: String,
-  resposta: String,
-  aliases: { type: Map, of: String }
+    nome: String,
+    senha: String,
+    pergunta: String,
+    resposta: String,
+    aliases: { type: Map, of: String }
 });
 
 const Usuario = mongoose.model('Usuario', usuarioSchema);
 
+// 🛑 CONFIGURAÇÃO DO STORE DE SESSÃO DO MONGODB
+const store = new MongoDBStore({
+  uri: mongoUri,
+  collection: 'tronSessions' // Nome da coleção onde as sessões serão salvas
+});
+
+// Captura erros de conexão (importante para debug)
+store.on('error', function(error) {
+  console.error('❌ Erro no MongoDB Session Store:', error);
+});
+
+
 // ================== FUNÇÃO DE NORMALIZAÇÃO ==================
 const normalizar = (texto = '') => {
-  return String(texto)
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "");
+    return String(texto)
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, "");
 };
 
 // ================== MIDDLEWARES ==================
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
+// 🛑 MIDDLEWARE DE SESSÃO ATUALIZADO
 app.use(session({
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: true
+    secret: process.env.SESSION_SECRET,
+    resave: false, // Recomendado para evitar regravação desnecessária
+    saveUninitialized: false, // Recomendado para evitar criação de sessões vazias
+    store: store, // ⬅️ AGORA USANDO O MONGODB STORE
+    cookie: {
+        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias (Exemplo: ajuste conforme sua necessidade)
+        secure: process.env.NODE_ENV === 'production' // Use 'secure: true' apenas em HTTPS/Produção
+    }
 }));
 
 // ================== FUNÇÃO FIRE HTTPS (CORRIGIDA) ==================
-// Retorna a requisição para permitir encadeamento seguro de '.on('error', ...)'
+// ... (restante do seu código)
 function fireHttpsGet(url, callback) {
-  // CORREÇÃO: Apenas retorna o objeto ClientRequest do https.get
-  return https.get(url, callback);
+    // CORREÇÃO: Apenas retorna o objeto ClientRequest do https.get
+    return https.get(url, callback);
 }
 
+// ================== ROTAS ==================
+// ... (O restante do seu código de rotas continua aqui, sem alterações necessárias)
+// ...
 // ================== ROTAS ==================
 app.get('/', (req, res) => res.redirect('/login'));
 
