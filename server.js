@@ -91,7 +91,7 @@ h1,h2,h3 { text-shadow:0 0 10px #00FFFF;}
 <h2>Smart Portão</h2>
 <h3>Login de Usuário</h3>
 <form method="POST" action="/login" autocomplete="off">
-<label>Nome de usuário:</label><br>
+<label>Token de usuário:</label><br>
 <input type="text" name="usuario" autocomplete="off" required><br><br>
 <label>Senha:</label><br>
 <input type="password" name="senha" autocomplete="new-password" required><br><br>
@@ -210,7 +210,7 @@ button{background:#000;color:#FF1493;border:1px solid #FF1493;box-shadow:0 0 10p
 <body>
 <h1>🔐 Recuperar Senha</h1>
 <form method="POST" action="/recuperar">
-<label>Usuário:</label><br>
+<label>Usuário:Token</label><br>
 <input type="text" name="usuario" required><br><br>
 <label>Resposta secreta:</label><br>
 <input type="text" name="resposta" required><br><br>
