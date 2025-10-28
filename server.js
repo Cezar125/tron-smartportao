@@ -71,18 +71,25 @@ const normalizar = (texto = '') => {
 };
 
 // ================== MIDDLEWARES ==================
+// ... (mantenha a inicialização do 'store' e do 'MongoDBStore' como está) ...
+
+// ================== MIDDLEWARES CORRIGIDOS ==================
+app.set('trust proxy', 1); // ⬅️ ESSENCIAL para serviços de hospedagem como OnRender
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// 🛑 MIDDLEWARE DE SESSÃO ATUALIZADO
+// MIDDLEWARE DE SESSÃO ATUALIZADO
 app.use(session({
     secret: process.env.SESSION_SECRET,
-    resave: false, // Recomendado para evitar regravação desnecessária
-    saveUninitialized: false, // Recomendado para evitar criação de sessões vazias
-    store: store, // ⬅️ AGORA USANDO O MONGODB STORE
+    resave: false,
+    saveUninitialized: false,
+    store: store,
     cookie: {
-        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias (Exemplo: ajuste conforme sua necessidade)
-        secure: process.env.NODE_ENV === 'production' // Use 'secure: true' apenas em HTTPS/Produção
+        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
+        // Se o seu OnRender usa HTTPS (que é o padrão), este deve ser true.
+        // O OnRender usa HTTPS, então vamos forçar o 'secure: true'.
+        secure: true, 
+        sameSite: 'lax' // Adiciona o SameSite para evitar avisos modernos
     }
 }));
 
