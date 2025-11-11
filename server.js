@@ -185,6 +185,78 @@ app.post('/api/auth/firebase-custom-token', async (req, res) => {
         res.status(500).json({ error: 'Erro interno ao gerar token de autenticação.' });
     }
 });
+// ✅ ROTA PARA VALIDAR ASSINATURA DO GOOGLE PLAY
+import fetch from "node-fetch";
+
+app.post('/googleplay/validate', async (req, res) => {
+    const { usuarioToken, purchaseToken } = req.body;
+
+    if (!usuarioToken || !purchaseToken) {
+        return res.status(400).json({ error: "usuarioToken e purchaseToken são obrigatórios." });
+    }
+
+    const userId = normalizar(usuarioToken);
+    const packageName = "com.tron.portaopro"; // ✅ Nome do seu app no Play Console
+    const productId = "tron-pro-mensal"; // ✅ ID da assinatura no Play Console
+
+    console.log(`📌 Validando assinatura de ${userId}`);
+
+    try {
+        // ✅ Busca Access Token para chamar API da Google Play
+        const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                client_id: process.env.GOOGLE_CLIENT_ID,
+                client_secret: process.env.GOOGLE_CLIENT_SECRET,
+                refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+                grant_type: "refresh_token",
+            }),
+        });
+
+        const tokenData = await tokenResponse.json();
+        const accessToken = tokenData.access_token;
+
+        if (!accessToken) {
+            console.error("❌ Erro ao gerar Access Token", tokenData);
+            return res.status(500).json({ error: "Falha ao gerar token Google Play" });
+        }
+
+        // ✅ Consulta status real da assinatura
+        const validateUrl = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${packageName}/purchases/subscriptions/${productId}/tokens/${purchaseToken}`;
+        const googleResponse = await fetch(validateUrl, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+        });
+
+        const googleData = await googleResponse.json();
+        console.log("📩 Status Google API:", googleData);
+
+        const ativo = googleData?.paymentState === 1 || googleData?.autoRenewing === true;
+
+        const dadosAssinatura = {
+            ativo,
+            purchaseToken,
+            expiraEm: googleData.expiryTimeMillis || null,
+            autoRenova: googleData.autoRenewing || false,
+            atualizadoEm: Date.now(),
+        };
+
+        // ✅ Atualiza no Firebase Realtime DB
+        await db.ref(`/assinaturas/${userId}`).set(dadosAssinatura);
+
+        console.log(`✅ Assinatura atualizada no Firebase para ${userId}`);
+
+        res.json({
+            sucesso: true,
+            assinaturaAtiva: ativo,
+            dados: dadosAssinatura,
+        });
+
+    } catch (error) {
+        console.error("❌ Erro /googleplay/validate:", error);
+        res.status(500).json({ sucesso: false, erro: "Erro ao validar assinatura" });
+    }
+});
 
 
 // -------- ROTAS EXISTENTES: REGISTRO --------
