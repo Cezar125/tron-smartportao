@@ -3,18 +3,18 @@ import session from 'express-session';
 import connectMongoDBSession from 'connect-mongodb-session';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
-import https from 'https';
+import https from 'https'; // Necessário para a função fireHttpsGet
 import dotenv from 'dotenv';
-import admin from 'firebase-admin';
-import fetch from "node-fetch"; // Para requisições HTTP como a do Google Play API
-import { GoogleAuth } from 'google-auth-library'; // Para autenticação segura com o Google APIs
+import admin from 'firebase-admin'; // Firebase Admin SDK para Realtime Database e FCM
+import fetch from "node-fetch"; // Para requisições HTTP (para a Cloud Function)
+import { GoogleAuth } from 'google-auth-library'; // Para autenticação com Google Play Developer API (se ainda usar /api/subscription/save-token)
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
 
-// 🛑 INICIALIZA O MONGODB STORE
+// 🛑 INICIALIZA O MONGODB STORE PARA SESSÕES
 const MongoDBStore = connectMongoDBSession(session);
 
 // ================== CONFIGURAÇÃO FIREBASE ADMIN SDK ==================
@@ -56,17 +56,9 @@ const usuarioSchema = new mongoose.Schema({
 });
 const Usuario = mongoose.model('Usuario', usuarioSchema);
 
-// 🛑 NOVO MODELO: Assinatura
-const assinaturaSchema = new mongoose.Schema({
-    userId: { type: String, required: true, unique: true }, // O UID do Firebase (usuarioNormalizado)
-    purchaseToken: { type: String, required: true },
-    productId: { type: String, required: true },
-    ativo: { type: Boolean, default: false }, // Status de pagamento no Google Play
-    expiraEm: Date, 
-    atualizadoEm: { type: Date, default: Date.now },
-});
-const Assinatura = mongoose.model('Assinatura', assinaturaSchema);
-
+// 🛑 REMOVIDO: O modelo Assinatura do MongoDB foi removido.
+// O status da assinatura é agora verificado diretamente no Firebase Realtime Database
+// através da Cloud Function 'getSubscriptionStatus'.
 
 // 🛑 CONFIGURAÇÃO DO STORE DE SESSÃO DO MONGODB
 const store = new MongoDBStore({
@@ -77,7 +69,6 @@ const store = new MongoDBStore({
 store.on('error', function(error) {
     console.error('❌ Erro no MongoDB Session Store:', error);
 });
-
 
 // ================== FUNÇÃO DE NORMALIZAÇÃO ==================
 const normalizar = (texto = '') => {
@@ -91,7 +82,7 @@ const normalizar = (texto = '') => {
 // ================== MIDDLEWARES ==================
 app.set('trust proxy', 1);
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json()); // Importante para receber JSON do app Android
+app.use(express.json()); // Importante para receber JSON
 
 // MIDDLEWARE DE SESSÃO
 app.use(session({
@@ -106,17 +97,16 @@ app.use(session({
     }
 }));
 
-// ================== FUNÇÃO FIRE HTTPS ==================
+// ================== FUNÇÃO FIRE HTTPS (para aliases) ==================
 function fireHttpsGet(url, callback) {
     return https.get(url, callback);
 }
 
-// ================== ROTAS API (Assinatura e Autenticação) ==================
+// ================== ROTAS API (Autenticação e Ação) ==================
 
 // -------- ROTA EXISTENTE: GERAR CUSTOM TOKEN DO FIREBASE PARA O APP --------
 app.post('/api/auth/firebase-custom-token', async (req, res) => {
     const { userToken } = req.body;
-    // ... (Mantido o código de geração de token Custom do Firebase)
     if (!userToken) {
         console.error('❌ /api/auth/firebase-custom-token: userToken não fornecido.');
         return res.status(400).json({ error: 'User token é obrigatório.' });
@@ -145,10 +135,13 @@ app.post('/api/auth/firebase-custom-token', async (req, res) => {
 });
 
 
-// -------- ROTA NOVA/CORRIGIDA: SALVAR E VALIDAR PURCHASE TOKEN DO APP --------
-// Este é o endpoint que o seu app Android (LoginActivity) irá chamar
+// -------- ROTA /api/subscription/save-token (ATENÇÃO: Reavaliar necessidade) --------
+// Esta rota do seu app Android salvava o purchaseToken no MongoDB.
+// Se a "fonte da verdade" para assinaturas é o Firebase Realtime Database (atualizado pelas RTDNs),
+// esta rota pode ser redundante ou precisar ser adaptada para atualizar o Firebase RTDB.
+// Por enquanto, mantido como estava, mas com atenção.
 app.post('/api/subscription/save-token', async (req, res) => {
-    const { userUid, purchaseToken, productId } = req.body; // Recebe os dados do App Android
+    const { userUid, purchaseToken, productId } = req.body;
 
     if (!userUid || !purchaseToken || productId !== 'tron-pro-mensal') {
         console.error("❌ /api/subscription/save-token: Dados incompletos ou ID de produto incorreto.");
@@ -159,19 +152,13 @@ app.post('/api/subscription/save-token', async (req, res) => {
     const packageName = "com.tron.portaopro"; // Nome do seu pacote no Play Console
 
     try {
-        // 1. Obter o Access Token usando a Chave de Serviço (usando GoogleAuth para Scopes)
-        // OBS: Você deve configurar a chave JSON da Service Account para o Google Play Developer API.
         const auth = new GoogleAuth({
-            // Se GOOGLE_APPLICATION_CREDENTIALS for definido, ele usará.
-            // Se a chave for a mesma do Firebase (Admin SDK), você deve reusá-la aqui
-            // garantindo que ela tenha a permissão 'androidpublisher'.
             scopes: ['https://www.googleapis.com/auth/androidpublisher'],
         });
         const accessToken = await auth.getAccessToken();
 
         if (!accessToken) throw new Error("Falha ao obter Access Token da Google Auth.");
 
-        // 2. Consulta status real da assinatura no Google Play Developer API
         const validateUrl = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${packageName}/purchases/subscriptions/${productId}/tokens/${purchaseToken}`;
         const googleResponse = await fetch(validateUrl, {
             headers: { Authorization: `Bearer ${accessToken}` },
@@ -180,34 +167,14 @@ app.post('/api/subscription/save-token', async (req, res) => {
         const googleData = await googleResponse.json();
         
         // CRÍTICO: Define o status ATIVO
-        const ativo = googleData?.subscriptionState === 0 || // 0 = SUBSCRIPTION_STATE_ACTIVE
-                      googleData?.paymentState === 1 || // 1 = PAYMENT_STATE_PAID
-                      googleData?.purchaseState === 0; // 0 = PURCHASE_STATE_PURCHASED (para Teste Grátis)
-
-        // Verifica o estado da assinatura. Um usuário é ativo se estiver em: 
-        // 0 (ACTIVE) ou 1 (GRACE_PERIOD)
-        // Incluir o teste grátis (PURCHASED) no seu App é crucial.
         const isSubscriptionActive = (googleData?.subscriptionState === 0 || googleData?.subscriptionState === 1); 
 
+        // 🛑 ATENÇÃO: Esta rota SALVAVA NO MONGODB.
+        // Se a fonte da verdade é o Firebase Realtime Database, esta lógica pode precisar ser redirecionada para lá.
+        // Ou, se esta rota serve para um propósito diferente (ex: backup de dados de compra), manter aqui.
+        // Por ora, a lógica de Assinatura para Alexa foi movida para o Firebase RTDB.
+        console.log(`✅ ATENÇÃO: Assinatura verificada via Google Play API, mas não mais salva no MongoDB para status de Alexa. Ativo: ${isSubscriptionActive}`);
 
-        // 3. Salva/Atualiza o estado no MongoDB
-        const dadosAssinatura = {
-            userId,
-            purchaseToken,
-            productId,
-            ativo: isSubscriptionActive,
-            expiraEm: googleData.expiryTimeMillis ? new Date(parseInt(googleData.expiryTimeMillis)) : null,
-            autoRenova: googleData.autoRenewing || false,
-            atualizadoEm: Date.now(),
-        };
-
-        await Assinatura.findOneAndUpdate(
-            { userId: userId },
-            dadosAssinatura,
-            { upsert: true, new: true } // Cria se não existir, atualiza se existir
-        );
-
-        console.log(`✅ Assinatura verificada e salva no MongoDB para ${userId}. Ativo: ${isSubscriptionActive}`);
 
         res.json({ sucesso: true, assinaturaAtiva: isSubscriptionActive });
 
@@ -223,7 +190,6 @@ app.get('/', (req, res) => res.redirect('/login'));
 
 // -------- ROTA EXISTENTE: LOGIN --------
 app.get('/login', (req, res) => {
-    // ... (HTML para Login)
     res.send(`
 <html>
 <head>
@@ -273,7 +239,7 @@ app.post('/login', async (req, res) => {
 });
 
 // -------- ROTA CRÍTICA: ACIONAR COMANDO VIA FIREBASE (PARA BIOMETRIA) --------
-// 🛑 Adicionado o check de assinatura aqui.
+// 🛑 AGORA CONSULTA A CLOUD FUNCTION 'getSubscriptionStatus' PARA O STATUS DA ASSINATURA.
 app.post('/alexa-biometria-trigger', async (req, res) => {
     console.log('## DEBUG: REQUISIÇÃO RECEBIDA EM /alexa-biometria-trigger ##');
 
@@ -288,22 +254,42 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
     const usuarioNormalizado = normalizar(usuario);
 
     try {
-        // --- 1. Verifica se o usuário existe no MongoDB ---
+        // --- 1. Verifica se o usuário existe no MongoDB (ainda relevante para o registro do usuário) ---
         const usuarioMongo = await Usuario.findOne({ nome: usuarioNormalizado });
         if (!usuarioMongo) {
             console.error(`DEBUG: Usuário "${usuario}" não encontrado no MongoDB.`);
             return res.status(404).send(`❌ Usuário "${usuario}" não encontrado.`);
         }
 
-        // 🛑 2. CHECK DE ASSINATURA TRON PRO
-        const statusAssinatura = await Assinatura.findOne({ userId: usuarioNormalizado });
+        // 🛑 2. CHECK DE ASSINATURA TRON PRO - CONSULTANDO A CLOUD FUNCTION 'getSubscriptionStatus'
+        const firebaseSubscriptionApiUrl = `https://us-central1-trontoken-93556.cloudfunctions.net/getSubscriptionStatus?userId=${usuarioNormalizado}`;
         
-        if (!statusAssinatura || !statusAssinatura.ativo) {
-            console.warn(`⚠️ Acesso negado: Usuário "${usuarioNormalizado}" não possui assinatura ATIVA.`);
-            // Retorna o erro 403 (Forbidden) e uma mensagem para a Skill Alexa
-            return res.status(403).send(`❌ O serviço TRON PRO requer uma assinatura ativa para o recurso de biometria.`);
+        // Use a mesma API Key configurada na sua Cloud Function 'getSubscriptionStatus' como FIREBASE_API_KEY_FOR_ONRENDER
+        const firebaseApiKey = process.env.FIREBASE_API_KEY_FOR_ONRENDER; 
+        if (!firebaseApiKey) {
+            console.error('❌ FIREBASE_API_KEY_FOR_ONRENDER não configurada no ambiente do OnRender.');
+            return res.status(500).send('Erro interno: Chave de API Firebase não configurada no OnRender.');
         }
-        console.log(`✅ Assinatura TRON PRO verificada para ${usuarioNormalizado}. Prosseguindo...`);
+
+        const subscriptionResponse = await fetch(firebaseSubscriptionApiUrl, {
+            headers: { 'x-api-key': firebaseApiKey }
+        });
+
+        if (!subscriptionResponse.ok) {
+            console.error(`❌ Erro ao consultar Cloud Function getSubscriptionStatus: ${subscriptionResponse.status} - ${await subscriptionResponse.text()}`);
+            // Retorna um erro interno, pois a falha foi na consulta do backend.
+            return res.status(500).send('❌ Erro interno ao verificar assinatura com o Firebase.');
+        }
+
+        const subscriptionData = await subscriptionResponse.json();
+        
+        // Verifica se o status da assinatura é ATIVO ou TRIAL (baseado na resposta da Cloud Function)
+        if (!subscriptionData.isSubscriber && !subscriptionData.isTrial) {
+            console.warn(`⚠️ Acesso negado: Usuário "${usuarioNormalizado}" não possui assinatura ATIVA ou em período de teste.`);
+            // Retorna o erro 403 (Forbidden) e uma mensagem para a Skill Alexa
+            return res.status(403).send(`❌ O serviço TRON PRO requer uma assinatura ativa ou em teste para o recurso de biometria.`);
+        }
+        console.log(`✅ Assinatura TRON PRO verificada no Firebase para ${usuarioNormalizado}. Prosseguindo... Status: ${subscriptionData.status}`);
         // 🛑 FIM DO CHECK DE ASSINATURA
 
         // --- 3. Escreve o comando no Realtime Database ---
@@ -317,19 +303,19 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
         });
         console.log(`✅ Comando RTDB registrado: /comandosPendentes/${usuarioNormalizado}/${portaoNormalizado}`);
 
-        // --- 4. Obter e enviar FCM Tokens para biometria (código existente) ---
+        // --- 4. Obter e enviar FCM Tokens para biometria ---
         const fcmTokensRef = db.ref(`/tokens/${usuarioNormalizado}`);
         const snapshot = await fcmTokensRef.once('value');
 
         if (!snapshot.exists()) {
-            console.warn(`⚠️ Nenhum token encontrado para o usuário ${usuarioNormalizado}.`);
+            console.warn(`⚠️ Nenhum token FCM encontrado para o usuário ${usuarioNormalizado}.`);
+            // Ainda retorna 200 para a Alexa, mas informa que não pôde notificar o celular.
             return res.status(200).send(`✅ Comando salvo no Firebase, mas nenhum dispositivo com token para ${usuario}.`);
         }
 
         const tokensObj = snapshot.val();
         const registrationTokens = Object.keys(tokensObj || {});
-        // ... (resto da lógica de envio FCM e remoção de tokens inválidos)
-
+        
         const message = {
             data: {
                 userId: usuarioNormalizado,
@@ -345,10 +331,10 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
         console.log(`✅ Envio FCM para ${usuarioNormalizado}: ${response.successCount} sucesso(s), ${response.failureCount} falha(s).`);
 
         if (response.failureCount > 0) {
-            // Lógica de remoção de tokens inválidos...
-            response.responses.forEach((resp, idx) => {
+            // Lógica para remover tokens inválidos
+            response.responses.forEach(async (resp, idx) => { // Use async aqui para await no remove()
                 if (!resp.success && ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(resp.error?.code)) {
-                    db.ref(`/tokens/${usuarioNormalizado}/${registrationTokens[idx]}`).remove();
+                    await db.ref(`/tokens/${usuarioNormalizado}/${registrationTokens[idx]}`).remove();
                     console.log(`🗑️ Token inválido removido: ${registrationTokens[idx]}`);
                 }
             });
@@ -358,16 +344,15 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
 
     } catch (err) {
         console.error(`❌ Erro em /alexa-biometria-trigger (${usuario}/${portao}):`, err);
+        // O OnRender deve capturar este erro e logar também.
         res.status(500).send(`❌ Erro interno: ${err.message || 'Erro desconhecido'}`);
     }
 });
 
 
 // -------- ROTAS EXISTENTES (REGISTRO, PAINEL, ALIASES, ETC.) --------
-// ... (O restante das suas rotas /registrar, /painel, /cadastrar-alias, /garagemvip, /:alias, etc. não foi alterado)
 
 app.get('/registrar', (req, res) => {
-    // ... HTML para Registrar
     res.send(`
 <html>
 <head>
@@ -440,7 +425,6 @@ a:hover { box-shadow:0 0 20px #00FFFF,0 0 30px #00FFFF; transform:scale(1.05);}
 });
 
 app.get('/recuperar', (req, res) => {
-    // ... HTML para Recuperar Senha
     res.send(`
 <html>
 <head>
@@ -486,7 +470,6 @@ app.get('/logout', (req, res) => { req.session.destroy(() => res.redirect('/logi
 app.get('/painel', async (req, res) => {
     const usuario = req.session.usuario;
     if (!usuario) return res.redirect('/login');
-    // ... (Código do painel, aliases, etc.)
     const u = await Usuario.findOne({ nome: usuario });
     const aliases = u.aliases || new Map();
     let lista = '';
@@ -613,7 +596,6 @@ app.post('/excluir-usuario', async (req, res) => {
 
 
 app.get('/garagemvip', async (req, res) => {
-    // ... (Código do /garagemvip)
     try {
         const uRaw = req.query.usuario || '';
         const usuario = normalizar(uRaw);
@@ -653,7 +635,6 @@ app.get('/garagemvip', async (req, res) => {
 });
 
 app.get('/:alias', async (req, res) => {
-    // ... (Código do /:alias)
     try {
         const alias = normalizar(req.params.alias);
         const usuario = normalizar(req.query.usuario || '');
