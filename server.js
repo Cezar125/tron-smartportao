@@ -265,18 +265,27 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
         const firebaseSubscriptionApiUrl = `https://us-central1-trontoken-93556.cloudfunctions.net/getSubscriptionStatus?userId=${usuarioNormalizado}`;
         
         // Use a mesma API Key configurada na sua Cloud Function 'getSubscriptionStatus' como FIREBASE_API_KEY_FOR_ONRENDER
-        const firebaseApiKey = process.env.FIREBASE_API_KEY_FOR_ONRENDER; 
-        if (!firebaseApiKey) {
-            console.error('❌ FIREBASE_API_KEY_FOR_ONRENDER não configurada no ambiente do OnRender.');
-            return res.status(500).send('Erro interno: Chave de API Firebase não configurada no OnRender.');
+        let firebaseApiKey = process.env.FIREBASE_API_KEY_FOR_ONRENDER; 
+        
+        // --- DEBUG ONRENDER LOGS ---
+        console.log(`DEBUG ONRENDER: firebaseApiKey lida do ambiente: [${firebaseApiKey}] (tipo: ${typeof firebaseApiKey})`);
+        // --- FIM DEBUG ONRENDER LOGS ---
+
+        if (!firebaseApiKey || typeof firebaseApiKey !== 'string' || firebaseApiKey.trim() === '') {
+            console.error('❌ FIREBASE_API_KEY_FOR_ONRENDER não configurada, não é uma string válida, ou está vazia no ambiente do OnRender.');
+            return res.status(500).send('Erro interno: Chave de API Firebase não configurada ou inválida.');
         }
 
+        // Assegura que o valor é uma string limpa antes de usar no cabeçalho
+        firebaseApiKey = firebaseApiKey.trim(); 
+
         const subscriptionResponse = await fetch(firebaseSubscriptionApiUrl, {
-            headers: { 'x-api-key': firebaseApiKey }
+            headers: { 'x-api-key': firebaseApiKey } // Usando a string limpa
         });
 
         if (!subscriptionResponse.ok) {
-            console.error(`❌ Erro ao consultar Cloud Function getSubscriptionStatus: ${subscriptionResponse.status} - ${await subscriptionResponse.text()}`);
+            const errorText = await subscriptionResponse.text();
+            console.error(`❌ Erro ao consultar Cloud Function getSubscriptionStatus: ${subscriptionResponse.status} - ${errorText}`);
             // Retorna um erro interno, pois a falha foi na consulta do backend.
             return res.status(500).send('❌ Erro interno ao verificar assinatura com o Firebase.');
         }
@@ -328,7 +337,7 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
             apns: { headers: { 'apns-priority': '10' } }
         };
         const response = await admin.messaging().sendEachForMulticast({ tokens: registrationTokens, ...message });
-        console.log(`✅ Envio FCM para ${usuarioNormalizado}: ${response.successCount} sucesso(s), ${response.failureCount} falha(s).`);
+        console.log(`✅ Envio FCM para ${usuarioNormalizado}: ${response.successCount} sucesso(s), ${response.failureCount} fa lha(s).`);
 
         if (response.failureCount > 0) {
             // Lógica para remover tokens inválidos
@@ -343,11 +352,13 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
         res.status(200).send(`✅ Comando '${portao}' enviado para ${usuario}. ${response.successCount} dispositivo(s) notificado(s).`);
 
     } catch (err) {
-        console.error(`❌ Erro em /alexa-biometria-trigger (${usuario}/${portao}):`, err);
-        // O OnRender deve capturar este erro e logar também.
+        // Loga o erro completo para depuração, se acontecer
+        console.error(`❌ Erro INESPERADO no processamento de /alexa-biometria-trigger (${usuario}/${portao}):`, err);
+        console.error(`❌ Stack Trace:`, err.stack);
         res.status(500).send(`❌ Erro interno: ${err.message || 'Erro desconhecido'}`);
     }
 });
+
 
 
 // -------- ROTAS EXISTENTES (REGISTRO, PAINEL, ALIASES, ETC.) --------
