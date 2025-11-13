@@ -185,6 +185,48 @@ app.post('/api/subscription/save-token', async (req, res) => {
 });
 
 
+// -------- ROTA NOVA: REIVINDICAR ASSINATURA PÓS-COMPRA (/api/subscription/claim) --------
+// Esta rota é chamada pelo app Android após o login do usuário, com o purchaseToken
+app.post('/api/subscription/claim', async (req, res) => {
+    console.log('## DEBUG: REQUISIÇÃO RECEBIDA EM /api/subscription/claim ##');
+
+    const { userId, purchaseToken } = req.body;
+
+    if (!userId || !purchaseToken) {
+        console.error('❌ /api/subscription/claim: Dados incompletos. userId e purchaseToken são obrigatórios.');
+        return res.status(400).json({ success: false, message: 'Dados incompletos. userId e purchaseToken são obrigatórios.' });
+    }
+
+    const usuarioNormalizado = normalizar(userId);
+
+    try {
+        // 1. Verificar se a assinatura não reivindicada existe no Firebase RTDB
+        const unclaimedRef = db.ref(`unclaimedSubscriptions/${purchaseToken}`);
+        const unclaimedSnapshot = await unclaimedRef.once('value');
+        const unclaimedSubscriptionData = unclaimedSnapshot.val();
+
+        if (!unclaimedSnapshot.exists() || !unclaimedSubscriptionData) {
+            console.warn(`⚠️ /api/subscription/claim: Assinatura não reivindicada com purchaseToken "${purchaseToken}" não encontrada ou já reivindicada.`);
+            return res.status(404).json({ success: false, message: 'Assinatura não encontrada ou já reivindicada.' });
+        }
+
+        // 2. Mover os dados da assinatura para o nó do usuário no Firebase RTDB
+        const userSubscriptionRef = db.ref(`users/${usuarioNormalizado}/subscription`);
+        await userSubscriptionRef.set(unclaimedSubscriptionData); // Define os dados da assinatura no usuário
+
+        // 3. Remover a entrada da assinatura não reivindicada
+        await unclaimedRef.remove();
+
+        console.log(`✅ Assinatura com purchaseToken "${purchaseToken}" reivindicada com sucesso pelo usuário "${usuarioNormalizado}".`);
+        res.status(200).json({ success: true, message: 'Assinatura reivindicada com sucesso!' });
+
+    } catch (error) {
+        console.error(`❌ Erro em /api/subscription/claim para userId "${usuarioNormalizado}" e purchaseToken "${purchaseToken}":`, error);
+        res.status(500).json({ success: false, message: 'Erro interno ao reivindicar assinatura.' });
+    }
+});
+
+
 // ================== ROTAS WEB E DE AÇÃO ==================
 app.get('/', (req, res) => res.redirect('/login'));
 
