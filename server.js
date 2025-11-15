@@ -406,17 +406,30 @@ app.post('/alexa-biometria-trigger', async (req, res) => {
         const tokensObj = snapshot.val();
         const registrationTokens = Object.keys(tokensObj || {});
         
+        // =========================================================================
+        // ✅ ATUALIZAÇÃO AQUI: Adicionando o payload 'notification' explícito
+        //    e mantendo os campos 'custom_notification_title'/'body' no 'data'
+        //    para compatibilidade com o app Android.
+        // =========================================================================
         const message = {
             data: {
                 userId: usuarioNormalizado,
                 portaoAlias: portaoNormalizado,
                 tipoComando: 'abrirComBiometria',
+                // Mantemos estes no 'data' para que o MyFirebaseMessagingService.kt possa lê-los
+                // para o título e corpo da BiometricActivity.
                 custom_notification_title: 'TRON Smart Portão',
                 custom_notification_body: `Toque para confirmar e abrir o portão ${portaoNormalizado}.`
+            },
+            notification: { // <-- NOVO: Este é o payload que faz o sistema Android exibir a notificação
+                title: 'TRON Smart Portão',
+                body: `Comando de Biometria para ${portaoNormalizado}. Toque para confirmar e abrir.`,
             },
             android: { priority: 'high' },
             apns: { headers: { 'apns-priority': '10' } }
         };
+        // =========================================================================
+        
         const response = await admin.messaging().sendEachForMulticast({ tokens: registrationTokens, ...message });
         console.log(`✅ Envio FCM para ${usuarioNormalizado}: ${response.successCount} sucesso(s), ${response.failureCount} fa lha(s).`);
 
